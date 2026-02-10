@@ -22,3 +22,10 @@ data/
 
 # Model
 Modelfile2
+
+# log
+*.log
+
+# pid
+*.pid
+

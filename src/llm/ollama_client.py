@@ -30,6 +30,14 @@ Available tools:
   - role: new role description (use _ to keep current)
   - tone: new speaking style (use _ to keep current)
   - e.g. [PERSONA:뽀삐,_,_] (change name only), [PERSONA:_,_,반말] (change tone only), [PERSONA:제이,비서,존댓말] (change all)
+- Memo: When the user wants to save, list, search, or delete memos, use these tags:
+  - [MEMO_SAVE:content] - Save a new memo (e.g. [MEMO_SAVE:우유 사기], [MEMO_SAVE:프로젝트 마감일 금요일])
+  - [MEMO_LIST] - List all saved memos
+  - [MEMO_SEARCH:keyword] - Search memos containing the keyword (e.g. [MEMO_SEARCH:우유], [MEMO_SEARCH:회의])
+  - [MEMO_DEL:id] - Delete a memo by ID number (e.g. [MEMO_DEL:3])
+- Search: When the user asks about recent events, current information, or anything requiring up-to-date data beyond your knowledge, output [SEARCH:query]
+  - e.g. [SEARCH:비트코인 시세], [SEARCH:파이썬 3.13 새 기능], [SEARCH:2026 아이폰 출시일]
+  - Use only when your knowledge is insufficient or the user explicitly asks you to search the web
 
 Rules:
 - Use tools only when the user is clearly asking for real-time information or requesting an action.
@@ -37,6 +45,9 @@ Rules:
 - For exchange, extract the amount and currency codes. If the user says "달러" assume USD, "엔" assume JPY, "원" assume KRW, "유로" assume EUR, "위안" assume CNY, "파운드" assume GBP.
 - For reminder, extract the time and what to remind. The user may say things like "30분 후에 알려줘", "내일 회의 알려줘", "오후 3시에 약 먹으라고 알려줘".
 - For persona, only use when the user explicitly asks to change your name, role, or tone. Use _ for fields that should stay the same.
+- For memo, detect when the user wants to save information for later ("메모해줘", "기억해줘", "저장해줘"), list memos ("메모 뭐 있었지", "메모 목록"), search ("메모 찾아줘", "~에 대한 메모"), or delete ("메모 삭제", "메모 지워줘").
+- For search, use when the question requires current/recent information or the user explicitly asks to search. Extract the core search query from their question.
+- For translation requests ("번역해줘", "영어로", "translate this"), directly translate without using any tool tag. You have built-in multilingual capabilities.
 - Output ONLY the tool tag, nothing else. Do not add any explanation before or after the tag."""
 
         if persona:

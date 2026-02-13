@@ -5,7 +5,7 @@ from discord import Message
 
 from src.db import DB
 from src.llm.ollama_client import OllamaClient
-from src.utils.web import extract_urls, get_page_content
+from src.utils.web import extract_urls, get_page_content, web_search, format_search_results
 from src.utils.weather import get_weather
 from src.utils.time_parser import parse_time, format_datetime
 
@@ -14,6 +14,11 @@ WEATHER_PATTERN = re.compile(r"\[WEATHER:(.+?)\]")
 EXCHANGE_PATTERN = re.compile(r"\[EXCHANGE:(.+?),(.+?),(.+?)\]")
 REMINDER_PATTERN = re.compile(r"\[REMINDER:(.+?),(.+)\]")
 PERSONA_PATTERN = re.compile(r"\[PERSONA:(.+?),(.+?),(.+?)\]")
+MEMO_SAVE_PATTERN = re.compile(r"\[MEMO_SAVE:(.+)\]")
+MEMO_LIST_PATTERN = re.compile(r"\[MEMO_LIST\]")
+MEMO_SEARCH_PATTERN = re.compile(r"\[MEMO_SEARCH:(.+)\]")
+MEMO_DEL_PATTERN = re.compile(r"\[MEMO_DEL:(\d+)\]")
+SEARCH_PATTERN = re.compile(r"\[SEARCH:(.+)\]")
 
 EXCHANGE_API_URL = "https://open.er-api.com/v6/latest/{base}"
 CURRENCY_NAMES = {
@@ -82,6 +87,10 @@ class ChatHandler:
                 tool_result = await self._try_reminder(response, user_id)
             if tool_result is None:
                 tool_result = await self._try_persona(response, user_id, persona)
+            if tool_result is None:
+                tool_result = await self._try_memo(response, user_id)
+            if tool_result is None:
+                tool_result = await self._try_search(response)
 
             # No tool call found → return as final response
             if tool_result is None:
@@ -203,6 +212,67 @@ class ChatHandler:
             changes.append(f"- Tone: {tone}")
 
         return "Persona updated successfully:\n" + "\n".join(changes)
+
+    async def _try_memo(self, response: str, user_id: str) -> str | None:
+        """Check for memo tool calls and execute if found."""
+        # Try MEMO_SAVE
+        match = MEMO_SAVE_PATTERN.search(response)
+        if match:
+            content = match.group(1).strip()
+            memo_id = await self.db.memo.add(user_id, content)
+            return f"메모 저장 완료:\n- ID: #{memo_id}\n- 내용: {content}"
+
+        # Try MEMO_LIST
+        match = MEMO_LIST_PATTERN.search(response)
+        if match:
+            memos = await self.db.memo.get_all(user_id, limit=20)
+            if not memos:
+                return "저장된 메모가 없습니다."
+            
+            lines = ["저장된 메모 목록:"]
+            for memo in memos:
+                lines.append(f"- #{memo['id']}: {memo['content']} (작성: {memo['created_at']})")
+            return "\n".join(lines)
+
+        # Try MEMO_SEARCH
+        match = MEMO_SEARCH_PATTERN.search(response)
+        if match:
+            query = match.group(1).strip()
+            memos = await self.db.memo.search(user_id, query)
+            if not memos:
+                return f"'{query}' 검색 결과가 없습니다."
+            
+            lines = [f"'{query}' 검색 결과:"]
+            for memo in memos:
+                lines.append(f"- #{memo['id']}: {memo['content']} (작성: {memo['created_at']})")
+            return "\n".join(lines)
+
+        # Try MEMO_DEL
+        match = MEMO_DEL_PATTERN.search(response)
+        if match:
+            memo_id = int(match.group(1))
+            deleted = await self.db.memo.delete(user_id, memo_id)
+            if deleted:
+                return f"메모 #{memo_id} 삭제 완료"
+            else:
+                return f"메모 #{memo_id}를 찾을 수 없습니다."
+
+        return None
+
+    async def _try_search(self, response: str) -> str | None:
+        """Check for search tool call and execute if found."""
+        match = SEARCH_PATTERN.search(response)
+        if not match:
+            return None
+
+        query = match.group(1).strip()
+        results = await web_search(query)
+
+        if not results:
+            return f"'{query}' 검색 결과를 가져오지 못했습니다."
+
+        search_context = format_search_results(results)
+        return f"검색 결과 ('{query}'):\n{search_context}"
 
     async def _fetch_rate(self, from_cur: str, to_cur: str) -> float | None:
         """Fetch exchange rate from API."""

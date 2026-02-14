@@ -63,6 +63,11 @@ class TestSystemPromptToolInstructions:
         prompt = client.build_system_prompt()
         assert "번역" in prompt or "translat" in prompt.lower()
 
+    def test_memo_del_uses_position_not_id(self, client):
+        """MEMO_DEL 안내가 position 기반으로 변경되었는지"""
+        prompt = client.build_system_prompt()
+        assert "position" in prompt.lower()
+
 
 class TestSystemPromptWithPersona:
     def test_persona_included(self, client):

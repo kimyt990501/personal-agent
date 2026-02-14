@@ -106,37 +106,83 @@ class TestTryMemoSearch:
         assert "검색 결과가 없습니다" in result
 
 
-# ─── _try_memo: MEMO_DEL ───
+# ─── _try_memo: MEMO_DEL (position 기반 삭제) ───
 
 class TestTryMemoDel:
     @pytest.mark.asyncio
-    async def test_delete_success(self, chat_handler):
+    async def test_delete_by_position_success(self, chat_handler):
+        """position=1 → 목록의 첫 번째 메모(DB id=10) 삭제"""
+        chat_handler.db.memo.get_all = AsyncMock(return_value=[
+            {"id": 10, "content": "첫 번째 메모", "created_at": "2026-02-13 12:00:00"},
+            {"id": 5, "content": "두 번째 메모", "created_at": "2026-02-13 11:00:00"},
+        ])
         chat_handler.db.memo.delete = AsyncMock(return_value=True)
 
-        result = await chat_handler._try_memo("[MEMO_DEL:3]", USER_ID)
+        result = await chat_handler._try_memo("[MEMO_DEL:1]", USER_ID)
 
         assert result is not None
         assert "삭제 완료" in result
-        assert "#3" in result
-        chat_handler.db.memo.delete.assert_called_once_with(USER_ID, 3)
+        assert "첫 번째 메모" in result
+        chat_handler.db.memo.delete.assert_called_once_with(USER_ID, 10)
 
     @pytest.mark.asyncio
-    async def test_delete_not_found(self, chat_handler):
-        chat_handler.db.memo.delete = AsyncMock(return_value=False)
-
-        result = await chat_handler._try_memo("[MEMO_DEL:999]", USER_ID)
-
-        assert result is not None
-        assert "찾을 수 없습니다" in result
-
-    @pytest.mark.asyncio
-    async def test_delete_converts_id_to_int(self, chat_handler):
-        """ID가 문자열에서 int로 변환되는지 확인"""
+    async def test_delete_by_position_second(self, chat_handler):
+        """position=2 → 목록의 두 번째 메모(DB id=5) 삭제"""
+        chat_handler.db.memo.get_all = AsyncMock(return_value=[
+            {"id": 10, "content": "첫 번째", "created_at": "2026-02-13 12:00:00"},
+            {"id": 5, "content": "두 번째", "created_at": "2026-02-13 11:00:00"},
+        ])
         chat_handler.db.memo.delete = AsyncMock(return_value=True)
 
-        await chat_handler._try_memo("[MEMO_DEL:42]", USER_ID)
+        result = await chat_handler._try_memo("[MEMO_DEL:2]", USER_ID)
 
-        chat_handler.db.memo.delete.assert_called_once_with(USER_ID, 42)
+        chat_handler.db.memo.delete.assert_called_once_with(USER_ID, 5)
+
+    @pytest.mark.asyncio
+    async def test_delete_position_out_of_range(self, chat_handler):
+        """범위 밖 position → 에러 메시지"""
+        chat_handler.db.memo.get_all = AsyncMock(return_value=[
+            {"id": 1, "content": "유일한 메모", "created_at": "2026-02-13 12:00:00"},
+        ])
+
+        result = await chat_handler._try_memo("[MEMO_DEL:5]", USER_ID)
+
+        assert result is not None
+        assert "1개만 있습니다" in result
+        assert "5번째" in result
+
+    @pytest.mark.asyncio
+    async def test_delete_position_zero(self, chat_handler):
+        """position=0 → 범위 밖 에러"""
+        chat_handler.db.memo.get_all = AsyncMock(return_value=[
+            {"id": 1, "content": "메모", "created_at": "2026-02-13 12:00:00"},
+        ])
+
+        result = await chat_handler._try_memo("[MEMO_DEL:0]", USER_ID)
+
+        assert "찾을 수 없습니다" in result or "개만 있습니다" in result
+
+    @pytest.mark.asyncio
+    async def test_delete_empty_list(self, chat_handler):
+        """메모가 없는 상태에서 삭제 시도"""
+        chat_handler.db.memo.get_all = AsyncMock(return_value=[])
+
+        result = await chat_handler._try_memo("[MEMO_DEL:1]", USER_ID)
+
+        assert result is not None
+        assert "0개만 있습니다" in result
+
+    @pytest.mark.asyncio
+    async def test_delete_db_failure(self, chat_handler):
+        """DB에서 삭제 실패 (delete가 False 반환)"""
+        chat_handler.db.memo.get_all = AsyncMock(return_value=[
+            {"id": 10, "content": "메모", "created_at": "2026-02-13 12:00:00"},
+        ])
+        chat_handler.db.memo.delete = AsyncMock(return_value=False)
+
+        result = await chat_handler._try_memo("[MEMO_DEL:1]", USER_ID)
+
+        assert "찾을 수 없습니다" in result
 
 
 # ─── _try_memo: no match ───

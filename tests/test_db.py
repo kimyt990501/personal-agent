@@ -47,18 +47,19 @@ class TestMemoDB:
         assert contents == {"첫 번째", "두 번째", "세 번째"}
 
     @pytest.mark.asyncio
-    async def test_order_bug_no_id_tiebreaker(self, memo_db):
-        """[BUG] ORDER BY created_at DESC에 id tiebreaker가 없어
-        동일 초 내 삽입 시 정렬 순서가 비결정적임.
-        ORDER BY created_at DESC, id DESC 로 수정 필요."""
+    async def test_order_with_id_tiebreaker(self, memo_db):
+        """[BUG-001 FIXED] ORDER BY created_at DESC, id DESC 로 수정됨.
+        동일 초 내 삽입 시에도 최신(높은 id)이 먼저 나와야 함."""
         id1 = await memo_db.add(USER_ID, "첫 번째")
         id2 = await memo_db.add(USER_ID, "두 번째")
 
         memos = await memo_db.get_all(USER_ID)
-        # 현재 코드에서는 정렬 순서가 보장되지 않음 (id tiebreaker 없음)
         assert len(memos) == 2
-        # id가 증가하는지만 확인
-        assert id2 > id1
+        # id DESC이므로 id2(두 번째)가 먼저 나옴
+        assert memos[0]["id"] == id2
+        assert memos[0]["content"] == "두 번째"
+        assert memos[1]["id"] == id1
+        assert memos[1]["content"] == "첫 번째"
 
     @pytest.mark.asyncio
     async def test_get_all_with_limit(self, memo_db):
@@ -135,18 +136,19 @@ class TestConversationDB:
         assert roles == {"user", "assistant"}
 
     @pytest.mark.asyncio
-    async def test_history_order_bug(self, conv_db):
-        """[BUG] ORDER BY created_at DESC에 id tiebreaker가 없어
-        동일 초 내 메시지의 시간순 보장이 안됨.
-        ORDER BY created_at DESC, id DESC 로 수정 필요."""
+    async def test_history_order_fixed(self, conv_db):
+        """[BUG-001 FIXED] ORDER BY created_at DESC, id DESC + reversed()
+        동일 초 내 메시지도 시간순 보장됨."""
         await conv_db.add_message(USER_ID, "user", "첫 번째")
         await conv_db.add_message(USER_ID, "assistant", "두 번째")
         await conv_db.add_message(USER_ID, "user", "세 번째")
 
         history = await conv_db.get_history(USER_ID)
         assert len(history) == 3
-        contents = [h["content"] for h in history]
-        assert set(contents) == {"첫 번째", "두 번째", "세 번째"}
+        # reversed()로 ASC 순으로 반환되므로 순서 보장
+        assert history[0]["content"] == "첫 번째"
+        assert history[1]["content"] == "두 번째"
+        assert history[2]["content"] == "세 번째"
 
     @pytest.mark.asyncio
     async def test_history_limit(self, conv_db):

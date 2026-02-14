@@ -22,6 +22,8 @@ MEMO_LIST_PATTERN = re.compile(r"\[MEMO_LIST\]")
 MEMO_SEARCH_PATTERN = re.compile(r"\[MEMO_SEARCH:(.+)\]")
 MEMO_DEL_PATTERN = re.compile(r"\[MEMO_DEL:(\d+)\]")
 SEARCH_PATTERN = re.compile(r"\[SEARCH:(.+)\]")
+BRIEFING_SET_PATTERN = re.compile(r"\[BRIEFING_SET:(.+?),(.+)\]")
+BRIEFING_GET_PATTERN = re.compile(r"\[BRIEFING_GET\]")
 
 EXCHANGE_API_URL = "https://open.er-api.com/v6/latest/{base}"
 CURRENCY_NAMES = {
@@ -95,6 +97,8 @@ class ChatHandler:
                 tool_result = await self._try_memo(response, user_id)
             if tool_result is None:
                 tool_result = await self._try_search(response)
+            if tool_result is None:
+                tool_result = await self._try_briefing(response, user_id)
 
             # No tool call found → return as final response
             if tool_result is None:
@@ -298,6 +302,63 @@ class ChatHandler:
 
         search_context = format_search_results(results)
         return f"검색 결과 ('{query}'):\n{search_context}"
+
+    async def _try_briefing(self, response: str, user_id: str) -> str | None:
+        """Check for briefing tool calls and execute if found."""
+        # Try BRIEFING_SET
+        match = BRIEFING_SET_PATTERN.search(response)
+        if match:
+            key = match.group(1).strip()
+            value = match.group(2).strip()
+            logger.info(f"Tool called: [BRIEFING_SET:{key},{value}]")
+
+            # Validate and set
+            if key == "time":
+                # Validate time format
+                if ":" not in value or len(value.split(":")) != 2:
+                    return "시간 형식이 올바르지 않습니다. 예: 07:00"
+                try:
+                    h, m = value.split(":")
+                    if not (0 <= int(h) <= 23 and 0 <= int(m) <= 59):
+                        return "시간이 올바르지 않습니다. (시: 0-23, 분: 0-59)"
+                except ValueError:
+                    return "시간 형식이 올바르지 않습니다."
+
+                await self.db.briefing.set_settings(user_id, time=value)
+                return f"브리핑 시간이 {value}로 설정되었습니다."
+
+            elif key == "city":
+                await self.db.briefing.set_settings(user_id, city=value)
+                return f"브리핑 도시가 {value}로 설정되었습니다."
+
+            elif key == "enabled":
+                enabled = value.lower() in ("true", "1", "on", "yes")
+                await self.db.briefing.set_settings(user_id, enabled=enabled)
+                status = "활성화" if enabled else "비활성화"
+                return f"브리핑이 {status}되었습니다."
+
+            else:
+                return f"알 수 없는 설정 항목: {key}"
+
+        # Try BRIEFING_GET
+        match = BRIEFING_GET_PATTERN.search(response)
+        if match:
+            logger.info("Tool called: [BRIEFING_GET]")
+            settings = await self.db.briefing.get_settings(user_id)
+
+            if settings is None:
+                return "브리핑 설정 (기본값):\n- 상태: 활성화\n- 시간: 08:00\n- 도시: 서울"
+            else:
+                status = "활성화" if settings["enabled"] else "비활성화"
+                return (
+                    f"브리핑 설정:\n"
+                    f"- 상태: {status}\n"
+                    f"- 시간: {settings['time']}\n"
+                    f"- 도시: {settings['city']}\n"
+                    f"- 마지막 발송: {settings['last_sent'] or '없음'}"
+                )
+
+        return None
 
     async def _fetch_rate(self, from_cur: str, to_cur: str) -> float | None:
         """Fetch exchange rate from API."""

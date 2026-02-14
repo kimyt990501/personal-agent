@@ -119,11 +119,16 @@ class PersonalAssistantBot(discord.Client):
                 city = settings["city"]
                 last_sent = settings.get("last_sent")
 
-                # Check if it's time to send
-                if current_time == briefing_time:
-                    # Check if already sent today
-                    if last_sent and last_sent.startswith(current_date):
-                        continue  # Already sent today
+                # Check if already sent today
+                if last_sent and last_sent.startswith(current_date):
+                    continue  # Already sent today
+
+                # Check if it's time to send (current time >= briefing time)
+                brief_h, brief_m = map(int, briefing_time.split(":"))
+                current_h, current_m = now.hour, now.minute
+
+                # Send if current time is at or past briefing time
+                if (current_h, current_m) >= (brief_h, brief_m):
 
                     try:
                         user = await self.fetch_user(int(user_id))

@@ -31,8 +31,16 @@ class BriefingHandler:
             logger.info(f"Briefing disabled for user {user_id}")
         elif args.startswith("time "):
             time = args[5:].strip()
-            # Basic validation
+            # Validate time format and range
             if ":" not in time or len(time.split(":")) != 2:
+                await message.reply("❌ 시간 형식이 올바르지 않습니다. 예: `08:00`")
+                return
+            try:
+                h, m = time.split(":")
+                if not (0 <= int(h) <= 23 and 0 <= int(m) <= 59):
+                    await message.reply("❌ 시간이 올바르지 않습니다. (시: 0-23, 분: 0-59)")
+                    return
+            except ValueError:
                 await message.reply("❌ 시간 형식이 올바르지 않습니다. 예: `08:00`")
                 return
             await self.db.briefing.set_settings(user_id, time=time)

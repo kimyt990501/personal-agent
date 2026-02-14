@@ -243,3 +243,134 @@ class TestTrySearch:
         await chat_handler._try_search("[SEARCH:  공백 포함 쿼리  ]")
 
         mock_search.assert_called_once_with("공백 포함 쿼리")
+
+
+# ─── _try_briefing: BRIEFING_SET ───
+
+class TestTryBriefingSet:
+    @pytest.mark.asyncio
+    async def test_set_time_valid(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:time,07:00]", USER_ID)
+        assert result is not None
+        assert "07:00" in result
+        chat_handler.db.briefing.set_settings.assert_called_once_with(USER_ID, time="07:00")
+
+    @pytest.mark.asyncio
+    async def test_set_time_invalid_format(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:time,오전7시]", USER_ID)
+        assert "형식" in result
+        chat_handler.db.briefing.set_settings.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_time_out_of_range(self, chat_handler):
+        """BUG-006 수정 확인: 25:99 같은 범위 밖 시간 거부"""
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:time,25:99]", USER_ID)
+        assert "올바르지 않습니다" in result
+        chat_handler.db.briefing.set_settings.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_time_boundary_valid(self, chat_handler):
+        """23:59 — 최대 유효 시간"""
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:time,23:59]", USER_ID)
+        assert "23:59" in result
+        chat_handler.db.briefing.set_settings.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_time_boundary_zero(self, chat_handler):
+        """00:00 — 최소 유효 시간"""
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:time,00:00]", USER_ID)
+        assert "00:00" in result
+
+    @pytest.mark.asyncio
+    async def test_set_city(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:city,부산]", USER_ID)
+        assert "부산" in result
+        chat_handler.db.briefing.set_settings.assert_called_once_with(USER_ID, city="부산")
+
+    @pytest.mark.asyncio
+    async def test_set_enabled_true(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:enabled,true]", USER_ID)
+        assert "활성화" in result
+        chat_handler.db.briefing.set_settings.assert_called_once_with(USER_ID, enabled=True)
+
+    @pytest.mark.asyncio
+    async def test_set_enabled_false(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:enabled,false]", USER_ID)
+        assert "비활성화" in result
+        chat_handler.db.briefing.set_settings.assert_called_once_with(USER_ID, enabled=False)
+
+    @pytest.mark.asyncio
+    async def test_set_enabled_off(self, chat_handler):
+        """'off' 문자열도 비활성화로 처리"""
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:enabled,off]", USER_ID)
+        assert "비활성화" in result
+
+    @pytest.mark.asyncio
+    async def test_set_unknown_key(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[BRIEFING_SET:unknown,value]", USER_ID)
+        assert "알 수 없는" in result
+
+
+# ─── _try_briefing: BRIEFING_GET ───
+
+class TestTryBriefingGet:
+    @pytest.mark.asyncio
+    async def test_get_default_settings(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        chat_handler.db.briefing.get_settings = AsyncMock(return_value=None)
+        result = await chat_handler._try_briefing("[BRIEFING_GET]", USER_ID)
+        assert "기본값" in result
+        assert "08:00" in result
+        assert "서울" in result
+
+    @pytest.mark.asyncio
+    async def test_get_custom_settings(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        chat_handler.db.briefing.get_settings = AsyncMock(return_value={
+            "enabled": True,
+            "time": "07:00",
+            "city": "부산",
+            "last_sent": "2026-02-14 07:00:00"
+        })
+        result = await chat_handler._try_briefing("[BRIEFING_GET]", USER_ID)
+        assert "07:00" in result
+        assert "부산" in result
+        assert "활성화" in result
+
+    @pytest.mark.asyncio
+    async def test_get_disabled_settings(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        chat_handler.db.briefing.get_settings = AsyncMock(return_value={
+            "enabled": False,
+            "time": "08:00",
+            "city": "서울",
+            "last_sent": None
+        })
+        result = await chat_handler._try_briefing("[BRIEFING_GET]", USER_ID)
+        assert "비활성화" in result
+
+
+# ─── _try_briefing: no match ───
+
+class TestTryBriefingNoMatch:
+    @pytest.mark.asyncio
+    async def test_no_briefing_pattern(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("일반 응답입니다.", USER_ID)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_memo_pattern_not_detected(self, chat_handler):
+        chat_handler.db.briefing = AsyncMock()
+        result = await chat_handler._try_briefing("[MEMO_LIST]", USER_ID)
+        assert result is None

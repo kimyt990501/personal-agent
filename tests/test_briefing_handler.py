@@ -60,6 +60,37 @@ class TestBriefingHandleTime:
         await handler.handle(message, USER_ID, "time 0700")
         handler.db.briefing.set_settings.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_set_time_out_of_range_hour(self, handler, message):
+        """BUG-006 수정 확인: 25시 거부"""
+        await handler.handle(message, USER_ID, "time 25:00")
+        handler.db.briefing.set_settings.assert_not_called()
+        assert "올바르지 않습니다" in message.reply.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_set_time_out_of_range_minute(self, handler, message):
+        """BUG-006 수정 확인: 60분 거부"""
+        await handler.handle(message, USER_ID, "time 12:60")
+        handler.db.briefing.set_settings.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_time_non_numeric(self, handler, message):
+        """BUG-006 수정 확인: 숫자가 아닌 값 거부"""
+        await handler.handle(message, USER_ID, "time ab:cd")
+        handler.db.briefing.set_settings.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_time_boundary_2359(self, handler, message):
+        """23:59 — 유효 경계값"""
+        await handler.handle(message, USER_ID, "time 23:59")
+        handler.db.briefing.set_settings.assert_called_once_with(USER_ID, time="23:59")
+
+    @pytest.mark.asyncio
+    async def test_set_time_boundary_0000(self, handler, message):
+        """00:00 — 유효 경계값"""
+        await handler.handle(message, USER_ID, "time 00:00")
+        handler.db.briefing.set_settings.assert_called_once_with(USER_ID, time="00:00")
+
 
 class TestBriefingHandleCity:
     @pytest.mark.asyncio

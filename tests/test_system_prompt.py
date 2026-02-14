@@ -87,3 +87,20 @@ class TestSystemPromptWithPersona:
     def test_no_persona(self, client):
         prompt = client.build_system_prompt(None)
         assert "personal AI assistant" in prompt
+
+
+class TestSystemPromptBriefingInstructions:
+    """시스템 프롬프트에 브리핑 도구 안내가 포함되는지 확인"""
+
+    def test_contains_briefing_set_tag(self, client):
+        prompt = client.build_system_prompt()
+        assert "[BRIEFING_SET:" in prompt
+
+    def test_contains_briefing_get_tag(self, client):
+        prompt = client.build_system_prompt()
+        assert "[BRIEFING_GET]" in prompt
+
+    def test_contains_briefing_usage_rules(self, client):
+        """브리핑 사용 규칙이 포함되는지"""
+        prompt = client.build_system_prompt()
+        assert "브리핑" in prompt or "briefing" in prompt.lower()

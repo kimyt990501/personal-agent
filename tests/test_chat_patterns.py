@@ -12,6 +12,8 @@ from src.bot.handlers.chat import (
     MEMO_SEARCH_PATTERN,
     MEMO_DEL_PATTERN,
     SEARCH_PATTERN,
+    BRIEFING_SET_PATTERN,
+    BRIEFING_GET_PATTERN,
 )
 
 
@@ -233,6 +235,60 @@ class TestSearchPattern:
         """빈 쿼리는 .+ 패턴이 최소 1글자를 요구하므로 정상적으로 거부됨"""
         match = SEARCH_PATTERN.search("[SEARCH:]")
         assert match is None
+
+
+# ─── BRIEFING_SET_PATTERN ───
+
+class TestBriefingSetPattern:
+    def test_set_time(self):
+        match = BRIEFING_SET_PATTERN.search("[BRIEFING_SET:time,07:00]")
+        assert match is not None
+        assert match.group(1) == "time"
+        assert match.group(2) == "07:00"
+
+    def test_set_city(self):
+        match = BRIEFING_SET_PATTERN.search("[BRIEFING_SET:city,부산]")
+        assert match is not None
+        assert match.group(1) == "city"
+        assert match.group(2) == "부산"
+
+    def test_set_enabled(self):
+        match = BRIEFING_SET_PATTERN.search("[BRIEFING_SET:enabled,false]")
+        assert match is not None
+        assert match.group(1) == "enabled"
+        assert match.group(2) == "false"
+
+    def test_embedded_in_text(self):
+        text = "설정을 변경할게요. [BRIEFING_SET:time,08:30]"
+        match = BRIEFING_SET_PATTERN.search(text)
+        assert match is not None
+        assert match.group(2) == "08:30"
+
+    def test_no_match(self):
+        assert BRIEFING_SET_PATTERN.search("브리핑 시간 변경") is None
+
+    def test_non_greedy_key(self):
+        """key 부분은 .+? (non-greedy)로 첫 번째 콤마에서 분리"""
+        match = BRIEFING_SET_PATTERN.search("[BRIEFING_SET:city,서울,강남구]")
+        assert match is not None
+        assert match.group(1) == "city"
+        assert match.group(2) == "서울,강남구"  # value에 콤마 포함 가능
+
+
+# ─── BRIEFING_GET_PATTERN ───
+
+class TestBriefingGetPattern:
+    def test_basic(self):
+        match = BRIEFING_GET_PATTERN.search("[BRIEFING_GET]")
+        assert match is not None
+
+    def test_embedded_in_text(self):
+        text = "현재 설정을 확인해볼게요. [BRIEFING_GET]"
+        match = BRIEFING_GET_PATTERN.search(text)
+        assert match is not None
+
+    def test_no_match(self):
+        assert BRIEFING_GET_PATTERN.search("브리핑 설정 보여줘") is None
 
 
 # ─── 복합 패턴 감지 테스트 ───

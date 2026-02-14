@@ -5,9 +5,12 @@ from discord import Message
 
 from src.db import DB
 from src.llm.ollama_client import OllamaClient
+from src.utils.logger import setup_logger
 from src.utils.web import extract_urls, get_page_content, web_search, format_search_results
 from src.utils.weather import get_weather
 from src.utils.time_parser import parse_time, format_datetime
+
+logger = setup_logger(__name__)
 
 # Tool call patterns
 WEATHER_PATTERN = re.compile(r"\[WEATHER:(.+?)\]")
@@ -72,6 +75,7 @@ class ChatHandler:
                 await self._send_response(message, response)
 
             except Exception as e:
+                logger.error(f"Chat handler error: {str(e)}", exc_info=True)
                 await message.reply(f"오류가 발생했습니다: {str(e)}")
 
     async def _chat_with_tools(self, history: list[dict], persona: dict, user_id: str) -> str:
@@ -109,6 +113,7 @@ class ChatHandler:
             return None
 
         city = match.group(1).strip()
+        logger.info(f"Tool called: [WEATHER:{city}]")
         weather_data = await get_weather(city)
 
         if weather_data and "error" not in weather_data:
@@ -141,6 +146,8 @@ class ChatHandler:
         from_cur = match.group(2).strip().upper()
         to_cur = match.group(3).strip().upper()
 
+        logger.info(f"Tool called: [EXCHANGE:{amount},{from_cur},{to_cur}]")
+
         rate = await self._fetch_rate(from_cur, to_cur)
 
         if rate is not None:
@@ -164,6 +171,7 @@ class ChatHandler:
         time_str = match.group(1).strip()
         content = match.group(2).strip()
 
+        logger.info(f"Tool called: [REMINDER:{time_str},{content}]")
         remind_at = parse_time(time_str)
         if not remind_at:
             return f"Failed to parse time '{time_str}'. Could not set the reminder."
@@ -190,6 +198,8 @@ class ChatHandler:
         new_name = match.group(1).strip()
         new_role = match.group(2).strip()
         new_tone = match.group(3).strip()
+
+        logger.info(f"Tool called: [PERSONA:{new_name},{new_role},{new_tone}]")
 
         # _ means keep current value
         name = new_name if new_name != "_" else persona.get("name", "AI")
@@ -219,12 +229,14 @@ class ChatHandler:
         match = MEMO_SAVE_PATTERN.search(response)
         if match:
             content = match.group(1).strip()
+            logger.info(f"Tool called: [MEMO_SAVE:{content[:50]}...]")
             memo_id = await self.db.memo.add(user_id, content)
             return f"메모 저장 완료:\n- ID: #{memo_id}\n- 내용: {content}"
 
         # Try MEMO_LIST
         match = MEMO_LIST_PATTERN.search(response)
         if match:
+            logger.info("Tool called: [MEMO_LIST]")
             memos = await self.db.memo.get_all(user_id, limit=20)
             if not memos:
                 return "저장된 메모가 없습니다."
@@ -238,6 +250,7 @@ class ChatHandler:
         match = MEMO_SEARCH_PATTERN.search(response)
         if match:
             query = match.group(1).strip()
+            logger.info(f"Tool called: [MEMO_SEARCH:{query}]")
             memos = await self.db.memo.search(user_id, query)
             if not memos:
                 return f"'{query}' 검색 결과가 없습니다."
@@ -250,12 +263,23 @@ class ChatHandler:
         # Try MEMO_DEL
         match = MEMO_DEL_PATTERN.search(response)
         if match:
-            memo_id = int(match.group(1))
-            deleted = await self.db.memo.delete(user_id, memo_id)
+            position = int(match.group(1))  # 사용자가 말한 "N번째" (1부터 시작)
+            logger.info(f"Tool called: [MEMO_DEL:{position}]")
+
+            # 순서 → 실제 DB ID 변환
+            memos = await self.db.memo.get_all(user_id, limit=20)
+            if position < 1 or position > len(memos):
+                return f"메모가 {len(memos)}개만 있습니다. {position}번째 메모를 찾을 수 없습니다."
+
+            # memos는 최신순 정렬이므로 position-1 인덱스가 해당 메모
+            target_memo = memos[position - 1]
+            actual_id = target_memo['id']
+
+            deleted = await self.db.memo.delete(user_id, actual_id)
             if deleted:
-                return f"메모 #{memo_id} 삭제 완료"
+                return f"메모 삭제 완료:\n- #{actual_id}: {target_memo['content']}"
             else:
-                return f"메모 #{memo_id}를 찾을 수 없습니다."
+                return f"메모 #{actual_id}를 찾을 수 없습니다."
 
         return None
 
@@ -266,6 +290,7 @@ class ChatHandler:
             return None
 
         query = match.group(1).strip()
+        logger.info(f"Tool called: [SEARCH:{query}]")
         results = await web_search(query)
 
         if not results:

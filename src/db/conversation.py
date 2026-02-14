@@ -24,7 +24,7 @@ class ConversationDB:
                 """
                 SELECT role, content FROM conversations
                 WHERE user_id = ?
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT ?
                 """,
                 (user_id, limit)

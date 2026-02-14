@@ -10,6 +10,7 @@ from src.bot.handlers.exchange import ExchangeHandler
 from src.bot.handlers.pick import PickHandler
 from src.bot.handlers.file import FileHandler
 from src.bot.handlers.filesystem import FileSystemHandler
+from src.bot.handlers.briefing import BriefingHandler
 
 __all__ = [
     "ChatHandler",
@@ -24,4 +25,5 @@ __all__ = [
     "PickHandler",
     "FileHandler",
     "FileSystemHandler",
+    "BriefingHandler",
 ]

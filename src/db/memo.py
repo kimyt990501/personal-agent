@@ -25,7 +25,7 @@ class MemoDB:
                 """
                 SELECT id, content, created_at FROM memos
                 WHERE user_id = ?
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT ?
                 """,
                 (user_id, limit)
@@ -51,7 +51,7 @@ class MemoDB:
                 """
                 SELECT id, content, created_at FROM memos
                 WHERE user_id = ? AND content LIKE ?
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 """,
                 (user_id, f"%{query}%")
             )

@@ -72,4 +72,16 @@ class Database:
             if "recurrence" not in columns:
                 await db.execute("ALTER TABLE reminders ADD COLUMN recurrence TEXT DEFAULT NULL")
 
+            # Briefing settings table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS briefing_settings (
+                    user_id TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    time TEXT NOT NULL DEFAULT '08:00',
+                    city TEXT NOT NULL DEFAULT '서울',
+                    last_sent TEXT DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             await db.commit()

@@ -3,6 +3,7 @@ from src.db.conversation import ConversationDB
 from src.db.persona import PersonaDB
 from src.db.memo import MemoDB
 from src.db.reminder import ReminderDB
+from src.db.briefing import BriefingDB
 
 
 class DB:
@@ -14,6 +15,7 @@ class DB:
         self.persona = PersonaDB()
         self.memo = MemoDB()
         self.reminder = ReminderDB()
+        self.briefing = BriefingDB()
 
     async def init(self):
         """Initialize all database tables."""

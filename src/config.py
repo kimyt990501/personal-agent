@@ -18,6 +18,3 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
 # Conversation
 MAX_HISTORY_LENGTH = int(os.getenv("MAX_HISTORY_LENGTH", "20"))
-
-# Weather API (OpenWeatherMap)
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")

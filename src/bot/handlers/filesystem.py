@@ -6,6 +6,9 @@ from pathlib import Path
 from discord import Message
 
 from src.llm.ollama_client import OllamaClient
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 ALLOWED_ROOT = "/Volumes/ssd"

@@ -1,6 +1,9 @@
 from discord import Message
 
 from src.db import DB
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 PERSONA_SETUP_STEPS = {

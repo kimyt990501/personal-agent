@@ -2,6 +2,9 @@ import ollama
 from ollama import AsyncClient
 
 from src.config import OLLAMA_HOST, OLLAMA_MODEL
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class OllamaClient:
@@ -93,5 +96,6 @@ Never claim to be Claude, ChatGPT, or any other AI.
             response = await self.client.list()
             model_names = [m.model for m in response.models]
             return any(self.model in name for name in model_names)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Ollama health check failed: {e}")
             return False

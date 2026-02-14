@@ -1,6 +1,9 @@
 from discord import Message
 
 from src.utils.weather import get_weather, format_weather
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class WeatherHandler:

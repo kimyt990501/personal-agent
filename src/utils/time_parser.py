@@ -1,6 +1,10 @@
 import re
 from datetime import datetime, timedelta
 
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 
 def parse_time(time_str: str) -> datetime | None:
     """
@@ -85,3 +89,26 @@ def format_datetime(dt: datetime | str) -> str:
     if isinstance(dt, str):
         dt = datetime.fromisoformat(dt)
     return dt.strftime("%m/%d %H:%M")
+
+
+def validate_time_format(time_str: str) -> tuple[bool, str | None]:
+    """
+    Validate HH:MM time format.
+
+    Returns:
+        (is_valid, error_message): tuple where error_message is None if valid
+    """
+    if ":" not in time_str or len(time_str.split(":")) != 2:
+        return False, "시간 형식이 올바르지 않습니다. 예: 08:00"
+
+    try:
+        h, m = time_str.split(":")
+        hour = int(h)
+        minute = int(m)
+
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            return False, "시간이 올바르지 않습니다. (시: 0-23, 분: 0-59)"
+
+        return True, None
+    except ValueError:
+        return False, "시간 형식이 올바르지 않습니다. 예: 08:00"

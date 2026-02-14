@@ -4,6 +4,9 @@ from discord import Attachment, Message
 from pypdf import PdfReader
 
 from src.llm.ollama_client import OllamaClient
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 TEXT_EXTENSIONS = {

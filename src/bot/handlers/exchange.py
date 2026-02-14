@@ -1,6 +1,10 @@
 import aiohttp
 from discord import Message
 
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 
 CURRENCY_NAMES = {
     "KRW": "한국 원",

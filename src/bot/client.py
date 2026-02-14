@@ -127,8 +127,13 @@ class PersonalAssistantBot(discord.Client):
                 brief_h, brief_m = map(int, briefing_time.split(":"))
                 current_h, current_m = now.hour, now.minute
 
-                # Send if current time is at or past briefing time
-                if (current_h, current_m) >= (brief_h, brief_m):
+                # Send if current time is at or past briefing time, but within 5 minutes
+                # This prevents sending old briefings on bot restart
+                target_time = now.replace(hour=brief_h, minute=brief_m, second=0, microsecond=0)
+                time_diff = (now - target_time).total_seconds() / 60  # difference in minutes
+
+                # Only send if we're past the time but within 5 minutes
+                if (current_h, current_m) >= (brief_h, brief_m) and time_diff <= 5:
 
                     try:
                         user = await self.fetch_user(int(user_id))

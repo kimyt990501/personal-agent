@@ -1,5 +1,8 @@
 import aiosqlite
 from src.config import DB_PATH, MAX_HISTORY_LENGTH
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class ConversationDB:

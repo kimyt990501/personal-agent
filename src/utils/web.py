@@ -5,6 +5,10 @@ import trafilatura
 from typing import Optional
 from ddgs import DDGS
 
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 
 URL_PATTERN = re.compile(
     r'https?://[^\s<>"{}|\\^`\[\]]+'
@@ -26,8 +30,8 @@ async def fetch_page(url: str, timeout: int = 10) -> Optional[str]:
             async with session.get(url, headers=headers, timeout=timeout) as response:
                 if response.status == 200:
                     return await response.text()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to fetch page {url}: {e}")
     return None
 
 
@@ -51,7 +55,8 @@ async def web_search(query: str, max_results: int = 5) -> list[dict]:
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))
                 return results
-        except Exception:
+        except Exception as e:
+            logger.warning(f"DuckDuckGo search failed for query '{query}': {e}")
             return []
 
     # Run in thread pool since DDGS is synchronous

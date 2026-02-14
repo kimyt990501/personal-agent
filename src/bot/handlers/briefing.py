@@ -4,6 +4,7 @@ from discord import Message
 
 from src.db import DB
 from src.utils.logger import setup_logger
+from src.utils.time_parser import validate_time_format
 
 logger = setup_logger(__name__)
 
@@ -31,17 +32,10 @@ class BriefingHandler:
             logger.info(f"Briefing disabled for user {user_id}")
         elif args.startswith("time "):
             time = args[5:].strip()
-            # Validate time format and range
-            if ":" not in time or len(time.split(":")) != 2:
-                await message.reply("❌ 시간 형식이 올바르지 않습니다. 예: `08:00`")
-                return
-            try:
-                h, m = time.split(":")
-                if not (0 <= int(h) <= 23 and 0 <= int(m) <= 59):
-                    await message.reply("❌ 시간이 올바르지 않습니다. (시: 0-23, 분: 0-59)")
-                    return
-            except ValueError:
-                await message.reply("❌ 시간 형식이 올바르지 않습니다. 예: `08:00`")
+            # Validate time format using helper
+            is_valid, error_msg = validate_time_format(time)
+            if not is_valid:
+                await message.reply(f"❌ {error_msg}")
                 return
             await self.db.briefing.set_settings(user_id, time=time)
             await message.reply(f"⏰ 브리핑 시간이 {time}로 설정되었습니다.")

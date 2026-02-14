@@ -1,5 +1,9 @@
 import aiohttp
 
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -85,8 +89,8 @@ async def get_coordinates(city: str) -> tuple[float, float, str] | None:
                         r = results[0]
                         name = r.get("name", display_name)
                         return (r["latitude"], r["longitude"], name)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Geocoding failed for city '{city}': {e}")
     return None
 
 
@@ -113,8 +117,8 @@ async def get_weather(city: str) -> dict | None:
                 if response.status == 200:
                     data = await response.json()
                     return _parse_weather(data, city_name)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Weather API call failed for {city_name}: {e}")
     return None
 
 

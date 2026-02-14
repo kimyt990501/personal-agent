@@ -8,7 +8,7 @@ from src.llm.ollama_client import OllamaClient
 from src.utils.logger import setup_logger
 from src.utils.web import extract_urls, get_page_content, web_search, format_search_results
 from src.utils.weather import get_weather
-from src.utils.time_parser import parse_time, format_datetime
+from src.utils.time_parser import parse_time, format_datetime, validate_time_format
 
 logger = setup_logger(__name__)
 
@@ -314,15 +314,10 @@ class ChatHandler:
 
             # Validate and set
             if key == "time":
-                # Validate time format
-                if ":" not in value or len(value.split(":")) != 2:
-                    return "시간 형식이 올바르지 않습니다. 예: 07:00"
-                try:
-                    h, m = value.split(":")
-                    if not (0 <= int(h) <= 23 and 0 <= int(m) <= 59):
-                        return "시간이 올바르지 않습니다. (시: 0-23, 분: 0-59)"
-                except ValueError:
-                    return "시간 형식이 올바르지 않습니다."
+                # Validate time format using helper
+                is_valid, error_msg = validate_time_format(value)
+                if not is_valid:
+                    return error_msg
 
                 await self.db.briefing.set_settings(user_id, time=value)
                 return f"브리핑 시간이 {value}로 설정되었습니다."
@@ -371,7 +366,8 @@ class ChatHandler:
                     if data.get("result") != "success":
                         return None
                     return data["rates"].get(to_cur)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Exchange rate API call failed ({from_cur} → {to_cur}): {e}")
             return None
 
     async def _send_response(self, message: Message, response: str):

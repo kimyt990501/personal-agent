@@ -4,6 +4,9 @@ from discord import Message
 from src.db import DB
 from src.db.reminder import ReminderDB
 from src.utils.time_parser import parse_time, format_datetime
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 DAY_MAP = {
     "월": 0, "화": 1, "수": 2, "목": 3, "금": 4, "토": 5, "일": 6,

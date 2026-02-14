@@ -2,6 +2,10 @@ import random
 
 from discord import Message
 
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 
 class PickHandler:
     """Handler for random pick commands."""

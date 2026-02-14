@@ -3,6 +3,9 @@ from discord import Message
 from src.db import DB
 from src.llm.ollama_client import OllamaClient
 from src.utils.web import web_search, format_search_results
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class SearchHandler:

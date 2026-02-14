@@ -2,6 +2,9 @@
 
 import aiosqlite
 from src.config import DB_PATH
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class BriefingDB:

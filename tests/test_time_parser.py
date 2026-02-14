@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.utils.time_parser import parse_time, format_datetime
+from src.utils.time_parser import parse_time, format_datetime, validate_time_format
 
 
 # ─── parse_time: 상대 시간 ───
@@ -204,3 +204,76 @@ class TestFormatDatetime:
     def test_with_midnight(self):
         dt = datetime(2026, 1, 1, 0, 0, 0)
         assert format_datetime(dt) == "01/01 00:00"
+
+
+# ─── validate_time_format ───
+
+class TestValidateTimeFormat:
+    """validate_time_format() 공용 헬퍼 함수 테스트 (IMP-017 구현)"""
+
+    def test_valid_0800(self):
+        is_valid, err = validate_time_format("08:00")
+        assert is_valid is True
+        assert err is None
+
+    def test_valid_0000(self):
+        is_valid, err = validate_time_format("00:00")
+        assert is_valid is True
+
+    def test_valid_2359(self):
+        is_valid, err = validate_time_format("23:59")
+        assert is_valid is True
+
+    def test_valid_1230(self):
+        is_valid, err = validate_time_format("12:30")
+        assert is_valid is True
+
+    def test_invalid_no_colon(self):
+        is_valid, err = validate_time_format("0800")
+        assert is_valid is False
+        assert err is not None
+
+    def test_invalid_hour_24(self):
+        is_valid, err = validate_time_format("24:00")
+        assert is_valid is False
+        assert "올바르지 않습니다" in err
+
+    def test_invalid_hour_25(self):
+        is_valid, err = validate_time_format("25:00")
+        assert is_valid is False
+
+    def test_invalid_minute_60(self):
+        is_valid, err = validate_time_format("12:60")
+        assert is_valid is False
+
+    def test_invalid_minute_99(self):
+        is_valid, err = validate_time_format("12:99")
+        assert is_valid is False
+
+    def test_invalid_non_numeric(self):
+        is_valid, err = validate_time_format("ab:cd")
+        assert is_valid is False
+        assert "형식" in err
+
+    def test_invalid_korean(self):
+        is_valid, err = validate_time_format("오전:칠시")
+        assert is_valid is False
+
+    def test_invalid_empty_string(self):
+        is_valid, err = validate_time_format("")
+        assert is_valid is False
+
+    def test_invalid_too_many_colons(self):
+        is_valid, err = validate_time_format("12:30:00")
+        assert is_valid is False
+
+    def test_negative_hour(self):
+        is_valid, err = validate_time_format("-1:00")
+        assert is_valid is False
+
+    def test_returns_tuple(self):
+        """반환 타입이 항상 (bool, str|None) 튜플"""
+        result = validate_time_format("08:00")
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], bool)

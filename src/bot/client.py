@@ -5,6 +5,7 @@ from discord.ext import tasks
 from src.config import DISCORD_TOKEN
 from src.db import DB
 from src.llm.ollama_client import OllamaClient
+from src.utils.logger import setup_logger
 from src.bot.handlers import (
     ChatHandler,
     MemoHandler,
@@ -18,7 +19,12 @@ from src.bot.handlers import (
     PickHandler,
     FileHandler,
     FileSystemHandler,
+    BriefingHandler,
 )
+from src.utils.briefing_generator import generate_briefing
+from datetime import datetime
+
+logger = setup_logger(__name__)
 
 
 class PersonalAssistantBot(discord.Client):
@@ -26,6 +32,8 @@ class PersonalAssistantBot(discord.Client):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
+
+        logger.info("Initializing PersonalAssistantBot")
 
         # Core components
         self.db = DB()
@@ -44,6 +52,7 @@ class PersonalAssistantBot(discord.Client):
         self.pick_handler = PickHandler()
         self.file_handler = FileHandler(self.ollama)
         self.fs_handler = FileSystemHandler(self.ollama)
+        self.briefing_handler = BriefingHandler(self.db)
 
         # State
         self.persona_setup = {}
@@ -51,16 +60,21 @@ class PersonalAssistantBot(discord.Client):
     async def setup_hook(self):
         """Called when the bot is starting up."""
         await self.db.init()
+        logger.info("Database initialized")
 
         if await self.ollama.check_health():
-            print(f"Ollama connected: {self.ollama.model}")
+            logger.info(f"Ollama connected: {self.ollama.model}")
         else:
-            print(f"Warning: Ollama model '{self.ollama.model}' not available")
+            logger.warning(f"Ollama model '{self.ollama.model}' not available")
 
         self.check_reminders.start()
+        logger.info("Reminder check loop started")
+
+        self.check_briefing.start()
+        logger.info("Briefing check loop started")
 
     async def on_ready(self):
-        print(f"Bot is ready: {self.user}")
+        logger.info(f"Bot is ready: {self.user}")
 
     @tasks.loop(seconds=30)
     async def check_reminders(self):
@@ -81,12 +95,58 @@ class PersonalAssistantBot(discord.Client):
                     else:
                         await self.db.reminder.delete_by_id(reminder["id"])
                 except Exception as e:
-                    print(f"Failed to send reminder: {e}")
+                    logger.error(f"Failed to send reminder: {e}", exc_info=True)
         except Exception as e:
-            print(f"Reminder check error: {e}")
+            logger.error(f"Reminder check error: {e}", exc_info=True)
 
     @check_reminders.before_loop
     async def before_check_reminders(self):
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=1)
+    async def check_briefing(self):
+        """Check and send daily briefings."""
+        try:
+            now = datetime.now()
+            current_time = now.strftime("%H:%M")
+            current_date = now.strftime("%Y-%m-%d")
+
+            enabled_users = await self.db.briefing.get_all_enabled()
+
+            for settings in enabled_users:
+                user_id = settings["user_id"]
+                briefing_time = settings["time"]
+                city = settings["city"]
+                last_sent = settings.get("last_sent")
+
+                # Check if it's time to send
+                if current_time == briefing_time:
+                    # Check if already sent today
+                    if last_sent and last_sent.startswith(current_date):
+                        continue  # Already sent today
+
+                    try:
+                        user = await self.fetch_user(int(user_id))
+                        if user:
+                            logger.info(f"Generating briefing for user {user_id}")
+                            briefing_content = await generate_briefing(
+                                city, user_id, self.db.reminder
+                            )
+                            await user.send(briefing_content)
+
+                            # Update last_sent
+                            await self.db.briefing.update_last_sent(
+                                user_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            )
+                            logger.info(f"Briefing sent to user {user_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to send briefing to {user_id}: {e}", exc_info=True)
+
+        except Exception as e:
+            logger.error(f"Briefing check error: {e}", exc_info=True)
+
+    @check_briefing.before_loop
+    async def before_check_briefing(self):
         await self.wait_until_ready()
 
     async def on_message(self, message: Message):
@@ -99,6 +159,8 @@ class PersonalAssistantBot(discord.Client):
         user_id = str(message.author.id)
         content = message.content.strip()
         cmd = content.lower()
+
+        logger.debug(f"Message received from user {user_id}")
 
         # Route to appropriate handler
         if cmd == "/cmd":
@@ -129,6 +191,9 @@ class PersonalAssistantBot(discord.Client):
             await self.fs_handler.handle(message, content)
         elif cmd.startswith("/w ") or cmd == "/w":
             await self.weather_handler.handle(message, content)
+        elif cmd.startswith("/briefing"):
+            args = content[9:].strip()  # Remove "/briefing"
+            await self.briefing_handler.handle(message, user_id, args)
         elif message.attachments:
             await self.file_handler.handle(message, content)
         elif user_id in self.persona_setup:

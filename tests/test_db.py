@@ -181,6 +181,121 @@ class TestConversationDB:
 
 # ─── PersonaDB ───
 
+
+# ─── ConversationSummary ───
+
+class TestConversationSummary:
+    @pytest_asyncio.fixture
+    async def conv_db(self, tmp_db):
+        db = ConversationDB()
+        db.db_path = tmp_db
+        return db
+
+    @pytest.mark.asyncio
+    async def test_get_summary_empty(self, conv_db):
+        result = await conv_db.get_summary(USER_ID)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_save_and_get_summary(self, conv_db):
+        await conv_db.save_summary(USER_ID, "사용자 이름은 김철수이다.", 10)
+        result = await conv_db.get_summary(USER_ID)
+        assert result == "사용자 이름은 김철수이다."
+
+    @pytest.mark.asyncio
+    async def test_save_summary_updates_existing(self, conv_db):
+        await conv_db.save_summary(USER_ID, "첫 번째 요약", 10)
+        await conv_db.save_summary(USER_ID, "두 번째 요약", 5)
+        result = await conv_db.get_summary(USER_ID)
+        assert result == "두 번째 요약"
+
+    @pytest.mark.asyncio
+    async def test_save_summary_accumulates_count(self, conv_db):
+        """message_count는 누적된다."""
+        await conv_db.save_summary(USER_ID, "첫 요약", 12)
+        await conv_db.save_summary(USER_ID, "두 번째 요약", 8)
+
+        import aiosqlite
+        async with aiosqlite.connect(conv_db.db_path) as db:
+            cursor = await db.execute(
+                "SELECT message_count FROM conversation_summaries WHERE user_id = ?",
+                (USER_ID,)
+            )
+            row = await cursor.fetchone()
+        assert row[0] == 20  # 12 + 8
+
+    @pytest.mark.asyncio
+    async def test_clear_summary(self, conv_db):
+        await conv_db.save_summary(USER_ID, "요약 내용", 10)
+        await conv_db.clear_summary(USER_ID)
+        result = await conv_db.get_summary(USER_ID)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_clear_summary_nonexistent_ok(self, conv_db):
+        """없는 요약 삭제해도 에러 없음."""
+        await conv_db.clear_summary(USER_ID)  # should not raise
+
+    @pytest.mark.asyncio
+    async def test_get_message_count_empty(self, conv_db):
+        count = await conv_db.get_message_count(USER_ID)
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_get_message_count(self, conv_db):
+        await conv_db.add_message(USER_ID, "user", "메시지 1")
+        await conv_db.add_message(USER_ID, "assistant", "응답 1")
+        await conv_db.add_message(USER_ID, "user", "메시지 2")
+        count = await conv_db.get_message_count(USER_ID)
+        assert count == 3
+
+    @pytest.mark.asyncio
+    async def test_get_all_messages_order(self, conv_db):
+        """get_all_messages는 시간순(ASC) 반환."""
+        await conv_db.add_message(USER_ID, "user", "첫 번째")
+        await conv_db.add_message(USER_ID, "assistant", "두 번째")
+        await conv_db.add_message(USER_ID, "user", "세 번째")
+
+        messages = await conv_db.get_all_messages(USER_ID)
+        assert len(messages) == 3
+        assert messages[0]["content"] == "첫 번째"
+        assert messages[2]["content"] == "세 번째"
+
+    @pytest.mark.asyncio
+    async def test_delete_old_messages_keeps_recent(self, conv_db):
+        for i in range(1, 13):
+            await conv_db.add_message(USER_ID, "user", f"메시지 {i}")
+
+        await conv_db.delete_old_messages(USER_ID, keep_count=5)
+
+        remaining = await conv_db.get_all_messages(USER_ID)
+        assert len(remaining) == 5
+        # 가장 최근 5개가 남아야 함
+        assert remaining[-1]["content"] == "메시지 12"
+        assert remaining[0]["content"] == "메시지 8"
+
+    @pytest.mark.asyncio
+    async def test_delete_old_messages_user_isolation(self, conv_db):
+        await conv_db.add_message("user_a", "user", "A 메시지 1")
+        await conv_db.add_message("user_a", "user", "A 메시지 2")
+        await conv_db.add_message("user_b", "user", "B 메시지 1")
+
+        await conv_db.delete_old_messages("user_a", keep_count=1)
+
+        msgs_a = await conv_db.get_all_messages("user_a")
+        msgs_b = await conv_db.get_all_messages("user_b")
+        assert len(msgs_a) == 1
+        assert len(msgs_b) == 1  # user_b 영향 없음
+
+    @pytest.mark.asyncio
+    async def test_summary_user_isolation(self, conv_db):
+        await conv_db.save_summary("user_a", "A 요약", 5)
+        result_a = await conv_db.get_summary("user_a")
+        result_b = await conv_db.get_summary("user_b")
+        assert result_a == "A 요약"
+        assert result_b is None
+
+
 class TestPersonaDB:
     @pytest_asyncio.fixture
     async def persona_db(self, tmp_db):

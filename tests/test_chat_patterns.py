@@ -1,20 +1,27 @@
-"""Tests for tool call regex patterns in src/bot/handlers/chat.py"""
+"""Tests for tool call regex patterns in Tool classes under src/bot/tools/"""
 import re
 import pytest
 
-from src.bot.handlers.chat import (
-    WEATHER_PATTERN,
-    EXCHANGE_PATTERN,
-    REMINDER_PATTERN,
-    PERSONA_PATTERN,
-    MEMO_SAVE_PATTERN,
-    MEMO_LIST_PATTERN,
-    MEMO_SEARCH_PATTERN,
-    MEMO_DEL_PATTERN,
-    SEARCH_PATTERN,
-    BRIEFING_SET_PATTERN,
-    BRIEFING_GET_PATTERN,
-)
+from src.bot.tools.weather import WeatherTool
+from src.bot.tools.exchange import ExchangeTool
+from src.bot.tools.reminder import ReminderTool
+from src.bot.tools.persona import PersonaTool
+from src.bot.tools.memo import MemoTool
+from src.bot.tools.search import SearchTool
+from src.bot.tools.briefing import BriefingTool
+
+# Expose class-level PATTERN attributes as module-level names for test convenience
+WEATHER_PATTERN = WeatherTool.PATTERN
+EXCHANGE_PATTERN = ExchangeTool.PATTERN
+REMINDER_PATTERN = ReminderTool.PATTERN
+PERSONA_PATTERN = PersonaTool.PATTERN
+MEMO_SAVE_PATTERN = MemoTool.MEMO_SAVE_PATTERN
+MEMO_LIST_PATTERN = MemoTool.MEMO_LIST_PATTERN
+MEMO_SEARCH_PATTERN = MemoTool.MEMO_SEARCH_PATTERN
+MEMO_DEL_PATTERN = MemoTool.MEMO_DEL_PATTERN
+SEARCH_PATTERN = SearchTool.PATTERN
+BRIEFING_SET_PATTERN = BriefingTool.BRIEFING_SET_PATTERN
+BRIEFING_GET_PATTERN = BriefingTool.BRIEFING_GET_PATTERN
 
 
 # ─── WEATHER_PATTERN ───

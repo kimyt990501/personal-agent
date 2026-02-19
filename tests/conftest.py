@@ -77,6 +77,15 @@ async def tmp_db(tmp_path):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_summaries (
+                user_id TEXT PRIMARY KEY,
+                summary TEXT NOT NULL,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await db.commit()
 
     yield db_path

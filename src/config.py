@@ -18,3 +18,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
 # Conversation
 MAX_HISTORY_LENGTH = int(os.getenv("MAX_HISTORY_LENGTH", "20"))
+
+# Context Compression
+SUMMARY_THRESHOLD = int(os.getenv("SUMMARY_THRESHOLD", "20"))
+SUMMARY_KEEP_RECENT = int(os.getenv("SUMMARY_KEEP_RECENT", "10"))

@@ -68,11 +68,13 @@ class CommandHandler:
     async def handle_clear(self, message: Message, user_id: str):
         """Clear conversation history."""
         await self.db.conversation.clear_history(user_id)
+        await self.db.conversation.clear_summary(user_id)
         await message.reply("대화 기록을 초기화했습니다.")
 
     async def handle_newme(self, message: Message, user_id: str, persona_setup: dict):
         """Clear everything and restart."""
         await self.db.conversation.clear_history(user_id)
+        await self.db.conversation.clear_summary(user_id)
         await self.db.persona.clear(user_id)
         persona_setup.pop(user_id, None)
         await message.reply("대화 기록과 페르소나가 초기화되었습니다. 새로 시작해주세요!")

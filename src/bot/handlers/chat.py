@@ -1,39 +1,19 @@
-import re
-
-import aiohttp
 from discord import Message
 
+from src.bot.tools import ToolContext, ToolRegistry
+from src.bot.tools.briefing import BriefingTool
+from src.bot.tools.exchange import ExchangeTool
+from src.bot.tools.memo import MemoTool
+from src.bot.tools.persona import PersonaTool
+from src.bot.tools.reminder import ReminderTool
+from src.bot.tools.search import SearchTool
+from src.bot.tools.weather import WeatherTool
 from src.db import DB
 from src.llm.ollama_client import OllamaClient
 from src.utils.logger import setup_logger
-from src.utils.web import extract_urls, get_page_content, web_search, format_search_results
-from src.utils.weather import get_weather
-from src.utils.time_parser import parse_time, format_datetime, validate_time_format
+from src.utils.web import extract_urls, get_page_content
 
 logger = setup_logger(__name__)
-
-# Tool call patterns
-WEATHER_PATTERN = re.compile(r"\[WEATHER:(.+?)\]")
-EXCHANGE_PATTERN = re.compile(r"\[EXCHANGE:(.+?),(.+?),(.+?)\]")
-REMINDER_PATTERN = re.compile(r"\[REMINDER:(.+?),(.+)\]")
-PERSONA_PATTERN = re.compile(r"\[PERSONA:(.+?),(.+?),(.+?)\]")
-MEMO_SAVE_PATTERN = re.compile(r"\[MEMO_SAVE:(.+)\]")
-MEMO_LIST_PATTERN = re.compile(r"\[MEMO_LIST\]")
-MEMO_SEARCH_PATTERN = re.compile(r"\[MEMO_SEARCH:(.+)\]")
-MEMO_DEL_PATTERN = re.compile(r"\[MEMO_DEL:(\d+)\]")
-SEARCH_PATTERN = re.compile(r"\[SEARCH:(.+)\]")
-BRIEFING_SET_PATTERN = re.compile(r"\[BRIEFING_SET:(.+?),(.+)\]")
-BRIEFING_GET_PATTERN = re.compile(r"\[BRIEFING_GET\]")
-
-EXCHANGE_API_URL = "https://open.er-api.com/v6/latest/{base}"
-CURRENCY_NAMES = {
-    "KRW": "한국 원",
-    "USD": "미국 달러",
-    "JPY": "일본 엔",
-    "EUR": "유로",
-    "GBP": "영국 파운드",
-    "CNY": "중국 위안",
-}
 
 MAX_TOOL_ROUNDS = 3
 
@@ -44,6 +24,15 @@ class ChatHandler:
     def __init__(self, db: DB, ollama: OllamaClient):
         self.db = db
         self.ollama = ollama
+
+        self.registry = ToolRegistry()
+        self.registry.register(WeatherTool())
+        self.registry.register(ExchangeTool())
+        self.registry.register(ReminderTool())
+        self.registry.register(PersonaTool())
+        self.registry.register(MemoTool())
+        self.registry.register(SearchTool())
+        self.registry.register(BriefingTool())
 
     async def handle(self, message: Message, user_id: str, user_content: str, persona: dict):
         """Handle normal chat with persona."""
@@ -65,310 +54,106 @@ class ChatHandler:
             else:
                 enhanced_content = user_content
 
+            summary = await self.db.conversation.get_summary(user_id)
             history = await self.db.conversation.get_history(user_id)
             history.append({"role": "user", "content": enhanced_content})
 
             try:
-                response = await self._chat_with_tools(history, persona, user_id)
+                response = await self._chat_with_tools(history, persona, user_id, summary=summary)
 
                 await self.db.conversation.add_message(user_id, "user", user_content)
                 await self.db.conversation.add_message(user_id, "assistant", response)
 
                 await self._send_response(message, response)
+                await self._maybe_compress(user_id, persona)
 
             except Exception as e:
                 logger.error(f"Chat handler error: {str(e)}", exc_info=True)
                 await message.reply(f"오류가 발생했습니다: {str(e)}")
 
-    async def _chat_with_tools(self, history: list[dict], persona: dict, user_id: str) -> str:
+    async def _chat_with_tools(self, history: list[dict], persona: dict, user_id: str, summary: str | None = None) -> str:
         """Chat with LLM, detecting and executing tool calls in a loop."""
+        context = ToolContext(user_id=user_id, db=self.db, persona=persona)
+        tool_instructions = self.registry.build_tool_instructions()
+
         for _ in range(MAX_TOOL_ROUNDS):
-            response = await self.ollama.chat(history, persona=persona)
+            response = await self.ollama.chat(
+                history, persona=persona, summary=summary,
+                tool_instructions=tool_instructions
+            )
 
-            # Try each tool pattern
-            tool_result = await self._try_weather(response)
-            if tool_result is None:
-                tool_result = await self._try_exchange(response)
-            if tool_result is None:
-                tool_result = await self._try_reminder(response, user_id)
-            if tool_result is None:
-                tool_result = await self._try_persona(response, user_id, persona)
-            if tool_result is None:
-                tool_result = await self._try_memo(response, user_id)
-            if tool_result is None:
-                tool_result = await self._try_search(response)
-            if tool_result is None:
-                tool_result = await self._try_briefing(response, user_id)
+            tool_result = None
+            for tool in self.registry.tools:
+                tool_result = await tool.try_execute(response, context)
+                if tool_result is not None:
+                    break
 
-            # No tool call found → return as final response
             if tool_result is None:
                 return response
 
-            # Feed tool result back to LLM for natural response
             history.append({"role": "assistant", "content": response})
             history.append({"role": "user", "content": f"[Tool Result]\n{tool_result}\n\nBased on this data, answer the user's original question naturally."})
 
         return response
 
-    async def _try_weather(self, response: str) -> str | None:
-        """Check for weather tool call and execute if found."""
-        match = WEATHER_PATTERN.search(response)
-        if not match:
-            return None
+    async def _maybe_compress(self, user_id: str, persona: dict):
+        """Compress old messages into a summary if message count exceeds threshold."""
+        from src.config import SUMMARY_THRESHOLD, SUMMARY_KEEP_RECENT
 
-        city = match.group(1).strip()
-        logger.info(f"Tool called: [WEATHER:{city}]")
-        weather_data = await get_weather(city)
+        count = await self.db.conversation.get_message_count(user_id)
+        if count <= SUMMARY_THRESHOLD:
+            return
 
-        if weather_data and "error" not in weather_data:
-            lines = [
-                f"Weather data for {weather_data['city']}:",
-                f"- Condition: {weather_data['description']}",
-                f"- Temperature: {weather_data['temp']}°C (feels like {weather_data['feels_like']}°C)",
-                f"- Humidity: {weather_data['humidity']}%",
-                f"- Wind: {weather_data['wind_speed']} m/s",
-                f"- UV Index: {weather_data['uvi']}",
-            ]
-            if weather_data.get("temp_min") is not None:
-                lines.append(f"- Low/High: {weather_data['temp_min']}°C / {weather_data['temp_max']}°C")
-            if weather_data.get("rain_chance") is not None:
-                lines.append(f"- Rain probability: {weather_data['rain_chance']}%")
-            return "\n".join(lines)
+        all_messages = await self.db.conversation.get_all_messages(user_id)
+        to_summarize = all_messages[:-SUMMARY_KEEP_RECENT]
+        if not to_summarize:
+            return
+
+        existing_summary = await self.db.conversation.get_summary(user_id)
+
+        conversation_text = "\n".join(
+            f"[{m['role'].upper()}]: {m['content']}" for m in to_summarize
+        )
+
+        if existing_summary:
+            prompt = f"""다음은 사용자와 AI 어시스턴트의 이전 대화입니다. 핵심 정보를 간결하게 요약해주세요.
+
+유지해야 할 정보:
+- 사용자의 이름, 선호도, 습관 등 개인 정보
+- 진행 중인 작업이나 프로젝트
+- 주요 결정사항이나 약속
+- 대화의 전반적인 톤과 관계
+
+기존 요약:
+{existing_summary}
+
+추가 대화:
+{conversation_text}
+
+위 내용을 3-5문장의 한국어로 요약해주세요. 불필요한 인사말이나 잡담은 제외하고 핵심 정보만 남겨주세요."""
         else:
-            return f"Failed to get weather for '{city}'. The city may not exist or the API may be unavailable."
+            prompt = f"""다음은 사용자와 AI 어시스턴트의 이전 대화입니다. 핵심 정보를 간결하게 요약해주세요.
 
-    async def _try_exchange(self, response: str) -> str | None:
-        """Check for exchange tool call and execute if found."""
-        match = EXCHANGE_PATTERN.search(response)
-        if not match:
-            return None
+유지해야 할 정보:
+- 사용자의 이름, 선호도, 습관 등 개인 정보
+- 진행 중인 작업이나 프로젝트
+- 주요 결정사항이나 약속
+- 대화의 전반적인 톤과 관계
+
+{conversation_text}
+
+위 내용을 3-5문장의 한국어로 요약해주세요. 불필요한 인사말이나 잡담은 제외하고 핵심 정보만 남겨주세요."""
 
         try:
-            amount = float(match.group(1).strip())
-        except ValueError:
-            amount = 1.0
-        from_cur = match.group(2).strip().upper()
-        to_cur = match.group(3).strip().upper()
-
-        logger.info(f"Tool called: [EXCHANGE:{amount},{from_cur},{to_cur}]")
-
-        rate = await self._fetch_rate(from_cur, to_cur)
-
-        if rate is not None:
-            result = amount * rate
-            from_name = CURRENCY_NAMES.get(from_cur, from_cur)
-            to_name = CURRENCY_NAMES.get(to_cur, to_cur)
-            return (
-                f"Exchange rate result:\n"
-                f"- {amount:,.2f} {from_cur} ({from_name}) = {result:,.2f} {to_cur} ({to_name})\n"
-                f"- Rate: 1 {from_cur} = {rate:,.4f} {to_cur}"
+            new_summary = await self.ollama.chat(
+                [{"role": "user", "content": prompt}],
+                persona=None
             )
-        else:
-            return f"Failed to get exchange rate for {from_cur} → {to_cur}. Please check the currency codes."
-
-    async def _try_reminder(self, response: str, user_id: str) -> str | None:
-        """Check for reminder tool call and execute if found."""
-        match = REMINDER_PATTERN.search(response)
-        if not match:
-            return None
-
-        time_str = match.group(1).strip()
-        content = match.group(2).strip()
-
-        logger.info(f"Tool called: [REMINDER:{time_str},{content}]")
-        remind_at = parse_time(time_str)
-        if not remind_at:
-            return f"Failed to parse time '{time_str}'. Could not set the reminder."
-
-        reminder_id = await self.db.reminder.add(
-            user_id,
-            content,
-            remind_at.strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-        return (
-            f"Reminder set successfully:\n"
-            f"- ID: #{reminder_id}\n"
-            f"- Time: {format_datetime(remind_at)}\n"
-            f"- Content: {content}"
-        )
-
-    async def _try_persona(self, response: str, user_id: str, persona: dict) -> str | None:
-        """Check for persona tool call and execute if found."""
-        match = PERSONA_PATTERN.search(response)
-        if not match:
-            return None
-
-        new_name = match.group(1).strip()
-        new_role = match.group(2).strip()
-        new_tone = match.group(3).strip()
-
-        logger.info(f"Tool called: [PERSONA:{new_name},{new_role},{new_tone}]")
-
-        # _ means keep current value
-        name = new_name if new_name != "_" else persona.get("name", "AI")
-        role = new_role if new_role != "_" else persona.get("role", "개인 비서")
-        tone = new_tone if new_tone != "_" else persona.get("tone", "친근한 말투")
-
-        await self.db.persona.set(user_id, name=name, role=role, tone=tone)
-
-        # Update persona dict in-place so the next LLM call uses the new persona
-        persona["name"] = name
-        persona["role"] = role
-        persona["tone"] = tone
-
-        changes = []
-        if new_name != "_":
-            changes.append(f"- Name: {name}")
-        if new_role != "_":
-            changes.append(f"- Role: {role}")
-        if new_tone != "_":
-            changes.append(f"- Tone: {tone}")
-
-        return "Persona updated successfully:\n" + "\n".join(changes)
-
-    async def _try_memo(self, response: str, user_id: str) -> str | None:
-        """Check for memo tool calls and execute if found."""
-        # Try MEMO_SAVE
-        match = MEMO_SAVE_PATTERN.search(response)
-        if match:
-            content = match.group(1).strip()
-            logger.info(f"Tool called: [MEMO_SAVE:{content[:50]}...]")
-            memo_id = await self.db.memo.add(user_id, content)
-            return f"메모 저장 완료:\n- ID: #{memo_id}\n- 내용: {content}"
-
-        # Try MEMO_LIST
-        match = MEMO_LIST_PATTERN.search(response)
-        if match:
-            logger.info("Tool called: [MEMO_LIST]")
-            memos = await self.db.memo.get_all(user_id, limit=20)
-            if not memos:
-                return "저장된 메모가 없습니다."
-            
-            lines = ["저장된 메모 목록:"]
-            for memo in memos:
-                lines.append(f"- #{memo['id']}: {memo['content']} (작성: {memo['created_at']})")
-            return "\n".join(lines)
-
-        # Try MEMO_SEARCH
-        match = MEMO_SEARCH_PATTERN.search(response)
-        if match:
-            query = match.group(1).strip()
-            logger.info(f"Tool called: [MEMO_SEARCH:{query}]")
-            memos = await self.db.memo.search(user_id, query)
-            if not memos:
-                return f"'{query}' 검색 결과가 없습니다."
-            
-            lines = [f"'{query}' 검색 결과:"]
-            for memo in memos:
-                lines.append(f"- #{memo['id']}: {memo['content']} (작성: {memo['created_at']})")
-            return "\n".join(lines)
-
-        # Try MEMO_DEL
-        match = MEMO_DEL_PATTERN.search(response)
-        if match:
-            position = int(match.group(1))  # 사용자가 말한 "N번째" (1부터 시작)
-            logger.info(f"Tool called: [MEMO_DEL:{position}]")
-
-            # 순서 → 실제 DB ID 변환
-            memos = await self.db.memo.get_all(user_id, limit=20)
-            if position < 1 or position > len(memos):
-                return f"메모가 {len(memos)}개만 있습니다. {position}번째 메모를 찾을 수 없습니다."
-
-            # memos는 최신순 정렬이므로 position-1 인덱스가 해당 메모
-            target_memo = memos[position - 1]
-            actual_id = target_memo['id']
-
-            deleted = await self.db.memo.delete(user_id, actual_id)
-            if deleted:
-                return f"메모 삭제 완료:\n- #{actual_id}: {target_memo['content']}"
-            else:
-                return f"메모 #{actual_id}를 찾을 수 없습니다."
-
-        return None
-
-    async def _try_search(self, response: str) -> str | None:
-        """Check for search tool call and execute if found."""
-        match = SEARCH_PATTERN.search(response)
-        if not match:
-            return None
-
-        query = match.group(1).strip()
-        logger.info(f"Tool called: [SEARCH:{query}]")
-        results = await web_search(query)
-
-        if not results:
-            return f"'{query}' 검색 결과를 가져오지 못했습니다."
-
-        search_context = format_search_results(results)
-        return f"검색 결과 ('{query}'):\n{search_context}"
-
-    async def _try_briefing(self, response: str, user_id: str) -> str | None:
-        """Check for briefing tool calls and execute if found."""
-        # Try BRIEFING_SET
-        match = BRIEFING_SET_PATTERN.search(response)
-        if match:
-            key = match.group(1).strip()
-            value = match.group(2).strip()
-            logger.info(f"Tool called: [BRIEFING_SET:{key},{value}]")
-
-            # Validate and set
-            if key == "time":
-                # Validate time format using helper
-                is_valid, error_msg = validate_time_format(value)
-                if not is_valid:
-                    return error_msg
-
-                await self.db.briefing.set_settings(user_id, time=value)
-                return f"브리핑 시간이 {value}로 설정되었습니다."
-
-            elif key == "city":
-                await self.db.briefing.set_settings(user_id, city=value)
-                return f"브리핑 도시가 {value}로 설정되었습니다."
-
-            elif key == "enabled":
-                enabled = value.lower() in ("true", "1", "on", "yes")
-                await self.db.briefing.set_settings(user_id, enabled=enabled)
-                status = "활성화" if enabled else "비활성화"
-                return f"브리핑이 {status}되었습니다."
-
-            else:
-                return f"알 수 없는 설정 항목: {key}"
-
-        # Try BRIEFING_GET
-        match = BRIEFING_GET_PATTERN.search(response)
-        if match:
-            logger.info("Tool called: [BRIEFING_GET]")
-            settings = await self.db.briefing.get_settings(user_id)
-
-            if settings is None:
-                return "브리핑 설정 (기본값):\n- 상태: 활성화\n- 시간: 08:00\n- 도시: 서울"
-            else:
-                status = "활성화" if settings["enabled"] else "비활성화"
-                return (
-                    f"브리핑 설정:\n"
-                    f"- 상태: {status}\n"
-                    f"- 시간: {settings['time']}\n"
-                    f"- 도시: {settings['city']}\n"
-                    f"- 마지막 발송: {settings['last_sent'] or '없음'}"
-                )
-
-        return None
-
-    async def _fetch_rate(self, from_cur: str, to_cur: str) -> float | None:
-        """Fetch exchange rate from API."""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(EXCHANGE_API_URL.format(base=from_cur)) as resp:
-                    if resp.status != 200:
-                        return None
-                    data = await resp.json()
-                    if data.get("result") != "success":
-                        return None
-                    return data["rates"].get(to_cur)
+            await self.db.conversation.save_summary(user_id, new_summary, len(to_summarize))
+            await self.db.conversation.delete_old_messages(user_id, SUMMARY_KEEP_RECENT)
+            logger.info(f"Compressed {len(to_summarize)} messages into summary for user {user_id}")
         except Exception as e:
-            logger.warning(f"Exchange rate API call failed ({from_cur} → {to_cur}): {e}")
-            return None
+            logger.warning(f"Summary compression failed for user {user_id}: {e}")
 
     async def _send_response(self, message: Message, response: str):
         """Send response, splitting if necessary."""

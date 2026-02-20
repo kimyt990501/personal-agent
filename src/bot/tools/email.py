@@ -25,21 +25,21 @@ class EmailTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "- Email: When the user wants to send an email (이메일 보내줘, 메일 보내줘, 메일 써줘), use these tags:\n"
-            "  - [EMAIL_SEND:provider|to|subject|body] - Draft an email (e.g. [EMAIL_SEND:gmail|friend@naver.com|회의 참석 요청|안녕하세요, 내일 회의에 참석 부탁드립니다.])\n"
-            "  - [EMAIL_CONFIRM] - Send the drafted email after user confirms (응, 보내줘, 확인)\n"
-            "  - [EMAIL_CANCEL] - Cancel the draft (취소, 그만)\n"
-            "  provider: naver or gmail (omit for default, e.g. [EMAIL_SEND:|to|subject|body])\n"
-            "  IMPORTANT: Always use EMAIL_SEND first to draft, then wait for user confirmation."
+            "- Email: When the user wants to send an email (이메일 보내줘, 메일 보내줘, 메일 써줘), "
+            "you MUST output [EMAIL_SEND:provider|to|subject|body] tag. "
+            "You CANNOT send emails directly - you MUST use this tag.\n"
+            "  Example: [EMAIL_SEND:gmail|friend@naver.com|회의 참석 요청|안녕하세요, 내일 회의에 참석 부탁드립니다.]\n"
+            "  Example: [EMAIL_SEND:naver|abc@gmail.com|프로젝트 안내|프로젝트 진행 현황 공유드립니다.]\n"
+            "  provider: naver or gmail (네이버→naver, 지메일→gmail, 미지정 시 빈칸)\n"
+            "  - After draft preview, user confirms → [EMAIL_CONFIRM], user cancels → [EMAIL_CANCEL]"
         )
 
     @property
     def usage_rules(self) -> str:
         return (
-            "- For email, when the user mentions 이메일/메일 + 보내/써/작성, output the EMAIL_SEND tag immediately. "
-            "네이버 → provider=naver, 지메일/Gmail → provider=gmail. "
-            "Write body in polite Korean email style. "
-            "After showing draft preview, if user says 응/보내줘/확인 → [EMAIL_CONFIRM], 취소/그만 → [EMAIL_CANCEL]."
+            "- CRITICAL: You cannot send emails by yourself. When the user asks to send an email, "
+            "you MUST output the [EMAIL_SEND:...] tag. NEVER pretend you sent an email without using the tag. "
+            "After the draft is shown, output [EMAIL_CONFIRM] only when the user explicitly says 보내줘/응/확인."
         )
 
     async def try_execute(self, response: str, context: ToolContext) -> "str | ToolResult | None":
@@ -77,7 +77,7 @@ class EmailTool(Tool):
                 f"- 수신: {to}\n"
                 f"- 제목: {subject}\n"
                 f"- 본문:\n{body}\n\n"
-                f"발송할까요? (\"보내줘\" / \"취소\")"
+                f"발송할까요? (\"응\" / \"아니\")"
             )
             return ToolResult(result=preview, stop_loop=True)
 

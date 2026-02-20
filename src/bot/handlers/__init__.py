@@ -11,6 +11,7 @@ from src.bot.handlers.pick import PickHandler
 from src.bot.handlers.file import FileHandler
 from src.bot.handlers.filesystem import FileSystemHandler
 from src.bot.handlers.briefing import BriefingHandler
+from src.bot.handlers.email import EmailHandler
 
 __all__ = [
     "ChatHandler",
@@ -26,4 +27,5 @@ __all__ = [
     "FileHandler",
     "FileSystemHandler",
     "BriefingHandler",
+    "EmailHandler",
 ]

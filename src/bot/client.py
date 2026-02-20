@@ -20,6 +20,7 @@ from src.bot.handlers import (
     FileHandler,
     FileSystemHandler,
     BriefingHandler,
+    EmailHandler,
 )
 from src.utils.briefing_generator import generate_briefing
 from datetime import datetime
@@ -53,6 +54,7 @@ class PersonalAssistantBot(discord.Client):
         self.file_handler = FileHandler(self.ollama)
         self.fs_handler = FileSystemHandler(self.ollama)
         self.briefing_handler = BriefingHandler(self.db)
+        self.email_handler = EmailHandler()
 
         # State
         self.persona_setup = {}
@@ -201,6 +203,8 @@ class PersonalAssistantBot(discord.Client):
             await self.fs_handler.handle(message, content)
         elif cmd.startswith("/w ") or cmd == "/w":
             await self.weather_handler.handle(message, content)
+        elif cmd.startswith("/email ") or cmd == "/email":
+            await self.email_handler.handle(message, user_id, content)
         elif cmd.startswith("/briefing"):
             args = content[9:].strip()  # Remove "/briefing"
             await self.briefing_handler.handle(message, user_id, args)

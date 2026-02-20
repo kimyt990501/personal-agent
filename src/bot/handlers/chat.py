@@ -44,6 +44,35 @@ class ChatHandler:
 
     async def handle(self, message: Message, user_id: str, user_content: str, persona: dict):
         """Handle normal chat with persona."""
+        # If an email draft is pending, intercept confirm/cancel without going through LLM
+        email_tool = next((t for t in self.registry.tools if t.name == "email"), None)
+        if email_tool and user_id in email_tool._pending_drafts:
+            lower = user_content.strip().lower()
+            confirm_words = ("보내줘", "보내", "응", "확인", "네", "ㅇㅇ", "yes", "send")
+            cancel_words = ("취소", "그만", "아니", "안보내", "cancel", "no")
+
+            if any(w in lower for w in confirm_words):
+                from src.utils.email import send_email
+                draft = email_tool._pending_drafts.pop(user_id)
+                logger.info(f"Email confirmed by user {user_id} (bypassing LLM)")
+                result = await send_email(draft["provider"], draft["to"], draft["subject"], draft["body"])
+                if result["success"]:
+                    response = f"✅ 이메일을 발송했습니다.\n- 수신: {draft['to']}\n- 제목: {draft['subject']}"
+                else:
+                    response = f"❌ 이메일 발송 실패: {result['message']}"
+                await self.db.conversation.add_message(user_id, "user", user_content)
+                await self.db.conversation.add_message(user_id, "assistant", response)
+                await self._send_response(message, response)
+                return
+            elif any(w in lower for w in cancel_words):
+                email_tool._pending_drafts.pop(user_id, None)
+                logger.info(f"Email cancelled by user {user_id} (bypassing LLM)")
+                response = "이메일 발송이 취소되었습니다."
+                await self.db.conversation.add_message(user_id, "user", user_content)
+                await self.db.conversation.add_message(user_id, "assistant", response)
+                await self._send_response(message, response)
+                return
+
         async with message.channel.typing():
             # Check for URLs and fetch content
             urls = extract_urls(user_content)

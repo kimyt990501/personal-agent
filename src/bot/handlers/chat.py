@@ -3,7 +3,9 @@ import asyncio
 from discord import Message
 
 from src.bot.tools import ToolContext, ToolRegistry
+from src.bot.tools.base import ToolResult
 from src.bot.tools.briefing import BriefingTool
+from src.bot.tools.email import EmailTool
 from src.bot.tools.filesystem import FileSystemTool
 from src.bot.tools.exchange import ExchangeTool
 from src.bot.tools.memo import MemoTool
@@ -38,6 +40,7 @@ class ChatHandler:
         self.registry.register(SearchTool())
         self.registry.register(BriefingTool())
         self.registry.register(FileSystemTool())
+        self.registry.register(EmailTool())
 
     async def handle(self, message: Message, user_id: str, user_content: str, persona: dict):
         """Handle normal chat with persona."""
@@ -92,12 +95,19 @@ class ChatHandler:
             tool_result = None
             for tool in self.registry.tools:
                 try:
-                    tool_result = await tool.try_execute(response, context)
+                    raw = await tool.try_execute(response, context)
                 except Exception as e:
                     logger.warning(f"Tool {tool.name} execution failed: {e}")
                     continue
-                if tool_result is not None:
-                    break
+                if raw is None:
+                    continue
+                if isinstance(raw, ToolResult):
+                    if raw.stop_loop:
+                        return raw.result
+                    tool_result = raw.result
+                else:
+                    tool_result = raw
+                break
 
             if tool_result is None:
                 return response

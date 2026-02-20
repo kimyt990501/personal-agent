@@ -14,6 +14,12 @@ class ToolContext:
     persona: dict  # mutable — PersonaTool modifies in-place
 
 
+@dataclass
+class ToolResult:
+    result: str
+    stop_loop: bool = False
+
+
 class Tool(ABC):
     @property
     @abstractmethod
@@ -35,9 +41,10 @@ class Tool(ABC):
         ...
 
     @abstractmethod
-    async def try_execute(self, response: str, context: ToolContext) -> str | None:
+    async def try_execute(self, response: str, context: ToolContext) -> "str | ToolResult | None":
         """Match pattern in LLM response, execute, and return result.
-        Returns None if pattern not found."""
+        Returns None if pattern not found.
+        Returns ToolResult with stop_loop=True to short-circuit the tool loop."""
         ...
 
 

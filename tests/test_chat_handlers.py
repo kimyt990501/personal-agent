@@ -527,3 +527,82 @@ class TestMaybeCompress:
             await chat_handler._maybe_compress(USER_ID, {})
 
         chat_handler.ollama.chat.assert_not_called()
+
+
+# ─── _chat_with_tools: IMP-024 Tool 예외 로깅 ───
+
+class TestChatWithToolsExceptionHandling:
+    """IMP-024: Tool.try_execute() 예외 시 logger.warning + continue"""
+
+    def _make_mock_registry(self, tools):
+        registry = MagicMock()
+        registry.tools = tools
+        registry.build_tool_instructions = MagicMock(return_value="")
+        return registry
+
+    @pytest.mark.asyncio
+    async def test_tool_exception_logs_warning(self, chat_handler):
+        """Tool 예외 발생 시 logger.warning이 호출된다"""
+        mock_ollama = AsyncMock()
+        mock_ollama.chat = AsyncMock(return_value="일반 응답")
+        chat_handler.ollama = mock_ollama
+
+        failing_tool = MagicMock()
+        failing_tool.name = "failing_tool"
+        failing_tool.try_execute = AsyncMock(side_effect=Exception("tool error"))
+        chat_handler.registry = self._make_mock_registry([failing_tool])
+
+        with patch("src.bot.handlers.chat.logger") as mock_logger:
+            result = await chat_handler._chat_with_tools(
+                [{"role": "user", "content": "안녕"}], {}, USER_ID
+            )
+
+        mock_logger.warning.assert_called_once()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "failing_tool" in warning_msg
+        assert result == "일반 응답"
+
+    @pytest.mark.asyncio
+    async def test_tool_exception_continues_to_next_tool(self, chat_handler):
+        """첫 Tool 예외 시 두 번째 Tool이 실행된다"""
+        mock_ollama = AsyncMock()
+        chat_handler.ollama = mock_ollama
+
+        failing_tool = MagicMock()
+        failing_tool.name = "failing"
+        failing_tool.try_execute = AsyncMock(side_effect=Exception("error"))
+
+        working_tool = MagicMock()
+        working_tool.name = "working"
+        # 첫 번째 호출은 도구 결과 반환, 두 번째 호출은 None (패턴 미매칭) 반환
+        working_tool.try_execute = AsyncMock(side_effect=["도구 결과", None])
+
+        chat_handler.registry = self._make_mock_registry([failing_tool, working_tool])
+
+        # 1st LLM call: tool pattern, 2nd call: final response (no tool)
+        mock_ollama.chat.side_effect = ["[SOME_PATTERN]", "최종 응답"]
+
+        result = await chat_handler._chat_with_tools(
+            [{"role": "user", "content": "테스트"}], {}, USER_ID
+        )
+
+        assert working_tool.try_execute.call_count >= 1
+        assert result == "최종 응답"
+
+    @pytest.mark.asyncio
+    async def test_tool_exception_does_not_raise(self, chat_handler):
+        """Tool 예외가 _chat_with_tools 밖으로 전파되지 않는다"""
+        mock_ollama = AsyncMock()
+        mock_ollama.chat = AsyncMock(return_value="응답")
+        chat_handler.ollama = mock_ollama
+
+        failing_tool = MagicMock()
+        failing_tool.name = "crasher"
+        failing_tool.try_execute = AsyncMock(side_effect=RuntimeError("심각한 오류"))
+        chat_handler.registry = self._make_mock_registry([failing_tool])
+
+        # Should not raise
+        result = await chat_handler._chat_with_tools(
+            [{"role": "user", "content": "테스트"}], {}, USER_ID
+        )
+        assert isinstance(result, str)

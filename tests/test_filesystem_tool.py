@@ -71,13 +71,14 @@ class TestFileSystemToolRegistry:
         names = [t.name for t in handler.registry.tools]
         assert "filesystem" in names
 
-    def test_chat_handler_has_eight_tools(self):
-        """FileSystemTool 추가 후 ChatHandler에 8개 도구가 등록된다."""
+    def test_chat_handler_has_filesystem_tool(self):
+        """ChatHandler registry에 filesystem 도구가 포함된다."""
         from src.bot.handlers.chat import ChatHandler
         db = MagicMock()
         ollama = MagicMock()
         handler = ChatHandler(db, ollama)
-        assert len(handler.registry.tools) == 8
+        names = [t.name for t in handler.registry.tools]
+        assert "filesystem" in names
 
 
 # ─── 패턴 매칭 (try_execute) ───

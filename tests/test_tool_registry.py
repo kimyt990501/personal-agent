@@ -3,6 +3,7 @@ import pytest
 
 from src.bot.tools import ToolRegistry
 from src.bot.tools.briefing import BriefingTool
+from src.bot.tools.email import EmailTool
 from src.bot.tools.exchange import ExchangeTool
 from src.bot.tools.filesystem import FileSystemTool
 from src.bot.tools.memo import MemoTool
@@ -10,6 +11,8 @@ from src.bot.tools.persona import PersonaTool
 from src.bot.tools.reminder import ReminderTool
 from src.bot.tools.search import SearchTool
 from src.bot.tools.weather import WeatherTool
+
+ALL_TOOLS = [WeatherTool, ExchangeTool, ReminderTool, PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool, EmailTool]
 
 
 # ─── Registration ───
@@ -52,6 +55,13 @@ class TestToolRegistryRegistration:
         for tool_cls in [WeatherTool, ExchangeTool, ReminderTool, PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool]:
             registry.register(tool_cls())
         assert len(registry.tools) == 8
+
+    def test_all_nine_tools_with_email(self):
+        """EmailTool 포함 9개 도구 모두 등록 가능"""
+        registry = ToolRegistry()
+        for tool_cls in ALL_TOOLS:
+            registry.register(tool_cls())
+        assert len(registry.tools) == 9
 
 
 # ─── build_tool_instructions ───
@@ -180,7 +190,7 @@ class TestToolRegistryIteration:
     def test_tool_names_are_unique(self):
         """각 도구의 name이 고유한지 확인"""
         registry = ToolRegistry()
-        for tool_cls in [WeatherTool, ExchangeTool, ReminderTool, PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool]:
+        for tool_cls in ALL_TOOLS:
             registry.register(tool_cls())
         names = [tool.name for tool in registry.tools]
         assert len(names) == len(set(names))
@@ -191,28 +201,19 @@ class TestToolRegistryIteration:
 class TestToolAbcCompliance:
     """각 Tool 클래스가 ABC 계약을 올바르게 구현하는지 확인"""
 
-    @pytest.mark.parametrize("tool_cls", [
-        WeatherTool, ExchangeTool, ReminderTool,
-        PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool,
-    ])
+    @pytest.mark.parametrize("tool_cls", ALL_TOOLS)
     def test_name_property_is_string(self, tool_cls):
         tool = tool_cls()
         assert isinstance(tool.name, str)
         assert len(tool.name) > 0
 
-    @pytest.mark.parametrize("tool_cls", [
-        WeatherTool, ExchangeTool, ReminderTool,
-        PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool,
-    ])
+    @pytest.mark.parametrize("tool_cls", ALL_TOOLS)
     def test_description_property_is_string(self, tool_cls):
         tool = tool_cls()
         assert isinstance(tool.description, str)
         assert len(tool.description) > 0
 
-    @pytest.mark.parametrize("tool_cls", [
-        WeatherTool, ExchangeTool, ReminderTool,
-        PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool,
-    ])
+    @pytest.mark.parametrize("tool_cls", ALL_TOOLS)
     def test_usage_rules_property_is_string(self, tool_cls):
         tool = tool_cls()
         assert isinstance(tool.usage_rules, str)  # may be empty string

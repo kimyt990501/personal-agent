@@ -1,3 +1,5 @@
+import asyncio
+
 from discord import Message
 
 from src.bot.tools import ToolContext, ToolRegistry
@@ -25,6 +27,7 @@ class ChatHandler:
         self.db = db
         self.ollama = ollama
 
+        self._compress_tasks: set[asyncio.Task] = set()
         self.registry = ToolRegistry()
         self.registry.register(WeatherTool())
         self.registry.register(ExchangeTool())
@@ -65,7 +68,9 @@ class ChatHandler:
                 await self.db.conversation.add_message(user_id, "assistant", response)
 
                 await self._send_response(message, response)
-                await self._maybe_compress(user_id, persona)
+                task = asyncio.create_task(self._maybe_compress(user_id, persona))
+                self._compress_tasks.add(task)
+                task.add_done_callback(self._compress_tasks.discard)
 
             except Exception as e:
                 logger.error(f"Chat handler error: {str(e)}", exc_info=True)
@@ -84,7 +89,11 @@ class ChatHandler:
 
             tool_result = None
             for tool in self.registry.tools:
-                tool_result = await tool.try_execute(response, context)
+                try:
+                    tool_result = await tool.try_execute(response, context)
+                except Exception as e:
+                    logger.warning(f"Tool {tool.name} execution failed: {e}")
+                    continue
                 if tool_result is not None:
                     break
 

@@ -3,6 +3,7 @@
 from discord import Message
 
 from src.db import DB
+from src.utils.briefing_generator import generate_briefing
 from src.utils.logger import setup_logger
 from src.utils.time_parser import validate_time_format
 
@@ -45,10 +46,21 @@ class BriefingHandler:
             await self.db.briefing.set_settings(user_id, city=city)
             await message.reply(f"🌍 브리핑 도시가 {city}로 설정되었습니다.")
             logger.info(f"Briefing city set to {city} for user {user_id}")
+        elif args == "now":
+            settings = await self.db.briefing.get_settings(user_id)
+            city = settings["city"] if settings else "서울"
+            logger.info(f"Instant briefing requested by user {user_id} (city={city})")
+            try:
+                briefing_content = await generate_briefing(city, user_id, self.db.reminder)
+                await message.reply(briefing_content)
+            except Exception as e:
+                logger.error(f"Failed to generate instant briefing for {user_id}: {e}", exc_info=True)
+                await message.reply("❌ 브리핑 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
         else:
             await message.reply(
                 "사용법:\n"
                 "- `/briefing` - 현재 설정 확인\n"
+                "- `/briefing now` - 지금 즉시 브리핑 받기\n"
                 "- `/briefing on` - 브리핑 활성화\n"
                 "- `/briefing off` - 브리핑 비활성화\n"
                 "- `/briefing time 07:00` - 시간 변경\n"

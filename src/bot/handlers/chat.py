@@ -4,6 +4,7 @@ from discord import Message
 
 from src.bot.tools import ToolContext, ToolRegistry
 from src.bot.tools.briefing import BriefingTool
+from src.bot.tools.filesystem import FileSystemTool
 from src.bot.tools.exchange import ExchangeTool
 from src.bot.tools.memo import MemoTool
 from src.bot.tools.persona import PersonaTool
@@ -36,6 +37,7 @@ class ChatHandler:
         self.registry.register(MemoTool())
         self.registry.register(SearchTool())
         self.registry.register(BriefingTool())
+        self.registry.register(FileSystemTool())
 
     async def handle(self, message: Message, user_id: str, user_content: str, persona: dict):
         """Handle normal chat with persona."""

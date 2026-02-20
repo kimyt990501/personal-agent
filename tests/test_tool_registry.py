@@ -4,6 +4,7 @@ import pytest
 from src.bot.tools import ToolRegistry
 from src.bot.tools.briefing import BriefingTool
 from src.bot.tools.exchange import ExchangeTool
+from src.bot.tools.filesystem import FileSystemTool
 from src.bot.tools.memo import MemoTool
 from src.bot.tools.persona import PersonaTool
 from src.bot.tools.reminder import ReminderTool
@@ -44,6 +45,13 @@ class TestToolRegistryRegistration:
         for tool_cls in [WeatherTool, ExchangeTool, ReminderTool, PersonaTool, MemoTool, SearchTool, BriefingTool]:
             registry.register(tool_cls())
         assert len(registry.tools) == 7
+
+    def test_all_eight_tools_with_filesystem(self):
+        """FileSystemTool 포함 8개 도구 모두 등록 가능"""
+        registry = ToolRegistry()
+        for tool_cls in [WeatherTool, ExchangeTool, ReminderTool, PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool]:
+            registry.register(tool_cls())
+        assert len(registry.tools) == 8
 
 
 # ─── build_tool_instructions ───
@@ -110,6 +118,16 @@ class TestToolRegistryBuildInstructions:
         assert "[SEARCH:" in instructions
         assert "[BRIEFING_SET:" in instructions
 
+    def test_filesystem_tags_in_instructions(self):
+        """FileSystemTool 등록 시 FS 태그가 포함되어야 함"""
+        registry = ToolRegistry()
+        registry.register(FileSystemTool())
+        instructions = registry.build_tool_instructions()
+        assert "FS_LS" in instructions
+        assert "FS_READ" in instructions
+        assert "FS_FIND" in instructions
+        assert "FS_INFO" in instructions
+
     def test_empty_registry_instructions_has_structure(self):
         """빈 레지스트리도 구조화된 문자열 반환"""
         registry = ToolRegistry()
@@ -162,7 +180,7 @@ class TestToolRegistryIteration:
     def test_tool_names_are_unique(self):
         """각 도구의 name이 고유한지 확인"""
         registry = ToolRegistry()
-        for tool_cls in [WeatherTool, ExchangeTool, ReminderTool, PersonaTool, MemoTool, SearchTool, BriefingTool]:
+        for tool_cls in [WeatherTool, ExchangeTool, ReminderTool, PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool]:
             registry.register(tool_cls())
         names = [tool.name for tool in registry.tools]
         assert len(names) == len(set(names))
@@ -175,7 +193,7 @@ class TestToolAbcCompliance:
 
     @pytest.mark.parametrize("tool_cls", [
         WeatherTool, ExchangeTool, ReminderTool,
-        PersonaTool, MemoTool, SearchTool, BriefingTool,
+        PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool,
     ])
     def test_name_property_is_string(self, tool_cls):
         tool = tool_cls()
@@ -184,7 +202,7 @@ class TestToolAbcCompliance:
 
     @pytest.mark.parametrize("tool_cls", [
         WeatherTool, ExchangeTool, ReminderTool,
-        PersonaTool, MemoTool, SearchTool, BriefingTool,
+        PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool,
     ])
     def test_description_property_is_string(self, tool_cls):
         tool = tool_cls()
@@ -193,7 +211,7 @@ class TestToolAbcCompliance:
 
     @pytest.mark.parametrize("tool_cls", [
         WeatherTool, ExchangeTool, ReminderTool,
-        PersonaTool, MemoTool, SearchTool, BriefingTool,
+        PersonaTool, MemoTool, SearchTool, BriefingTool, FileSystemTool,
     ])
     def test_usage_rules_property_is_string(self, tool_cls):
         tool = tool_cls()

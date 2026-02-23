@@ -86,6 +86,13 @@ async def tmp_db(tmp_path):
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS mail_settings (
+                user_id TEXT PRIMARY KEY,
+                enabled INTEGER DEFAULT 1,
+                last_checked TEXT
+            )
+        """)
         await db.commit()
 
     yield db_path

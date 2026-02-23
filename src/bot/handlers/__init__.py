@@ -12,6 +12,7 @@ from src.bot.handlers.file import FileHandler
 from src.bot.handlers.filesystem import FileSystemHandler
 from src.bot.handlers.briefing import BriefingHandler
 from src.bot.handlers.email import EmailHandler
+from src.bot.handlers.mail import MailHandler
 
 __all__ = [
     "ChatHandler",
@@ -28,4 +29,5 @@ __all__ = [
     "FileSystemHandler",
     "BriefingHandler",
     "EmailHandler",
+    "MailHandler",
 ]

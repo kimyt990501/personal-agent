@@ -98,4 +98,13 @@ class Database:
                 )
             """)
 
+            # Mail notification settings table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS mail_settings (
+                    user_id TEXT PRIMARY KEY,
+                    enabled INTEGER DEFAULT 1,
+                    last_checked TEXT
+                )
+            """)
+
             await db.commit()

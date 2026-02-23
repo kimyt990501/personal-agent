@@ -58,10 +58,11 @@ class TestEmailSendPattern:
             "[EMAIL_SEND:naver|friend@naver.com|안녕하세요|본문 내용입니다]", context
         )
         assert result is not None
-        assert "초안" in result
-        assert "friend@naver.com" in result
-        assert "안녕하세요" in result
-        assert "본문 내용입니다" in result
+        assert "초안" in result.result
+        assert "friend@naver.com" in result.result
+        assert "안녕하세요" in result.result
+        assert "본문 내용입니다" in result.result
+        assert result.stop_loop is True
 
     @pytest.mark.asyncio
     async def test_draft_stored_in_pending(self, tool, context):
@@ -124,7 +125,8 @@ class TestEmailSendPattern:
             "[EMAIL_SEND:naver|a@naver.com|제목]", context
         )
         assert result is not None
-        assert "형식 오류" in result
+        assert "형식 오류" in result.result
+        assert result.stop_loop is True
         assert USER_ID not in tool._pending_drafts
 
     @pytest.mark.asyncio
@@ -133,7 +135,8 @@ class TestEmailSendPattern:
         result = await tool.try_execute(
             "[EMAIL_SEND:naver|a@naver.com|제목|본문]", context
         )
-        assert "보내줘" in result or "취소" in result
+        assert "발송할까요" in result.result or "응" in result.result
+        assert result.stop_loop is True
 
 
 # ─── EMAIL_CONFIRM 패턴 ───

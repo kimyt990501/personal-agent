@@ -21,8 +21,10 @@ from src.bot.handlers import (
     FileSystemHandler,
     BriefingHandler,
     EmailHandler,
+    MailHandler,
 )
 from src.utils.briefing_generator import generate_briefing
+from src.utils.email import check_new_mail
 from datetime import datetime
 
 logger = setup_logger(__name__)
@@ -55,6 +57,7 @@ class PersonalAssistantBot(discord.Client):
         self.fs_handler = FileSystemHandler(self.ollama)
         self.briefing_handler = BriefingHandler(self.db)
         self.email_handler = EmailHandler()
+        self.mail_handler = MailHandler(self.db)
 
         # State
         self.persona_setup = {}
@@ -74,6 +77,9 @@ class PersonalAssistantBot(discord.Client):
 
         self.check_briefing.start()
         logger.info("Briefing check loop started")
+
+        self.check_mail.start()
+        logger.info("Mail check loop started")
 
     async def on_ready(self):
         logger.info(f"Bot is ready: {self.user}")
@@ -161,6 +167,40 @@ class PersonalAssistantBot(discord.Client):
     async def before_check_briefing(self):
         await self.wait_until_ready()
 
+    @tasks.loop(minutes=30)
+    async def check_mail(self):
+        """Check for new mail and notify enabled users."""
+        try:
+            enabled_users = await self.db.mail.get_all_enabled()
+            if not enabled_users:
+                return
+
+            gmail_mails = await check_new_mail("gmail")
+            naver_mails = await check_new_mail("naver")
+
+            if not gmail_mails and not naver_mails:
+                return
+
+            notification = MailHandler.format_mail_notification(gmail_mails, naver_mails)
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            for settings in enabled_users:
+                user_id = settings["user_id"]
+                try:
+                    user = await self.fetch_user(int(user_id))
+                    if user:
+                        await user.send(notification)
+                        await self.db.mail.update_last_checked(user_id, now_str)
+                        logger.info(f"Mail notification sent to user {user_id}")
+                except Exception as e:
+                    logger.error(f"Failed to send mail notification to {user_id}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Mail check error: {e}", exc_info=True)
+
+    @check_mail.before_loop
+    async def before_check_mail(self):
+        await self.wait_until_ready()
+
     async def on_message(self, message: Message):
         if message.author == self.user:
             return
@@ -203,6 +243,8 @@ class PersonalAssistantBot(discord.Client):
             await self.fs_handler.handle(message, content)
         elif cmd.startswith("/w ") or cmd == "/w":
             await self.weather_handler.handle(message, content)
+        elif cmd.startswith("/mail ") or cmd == "/mail":
+            await self.mail_handler.handle(message, user_id, content)
         elif cmd.startswith("/email ") or cmd == "/email":
             await self.email_handler.handle(message, user_id, content)
         elif cmd.startswith("/briefing"):
